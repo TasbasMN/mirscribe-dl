@@ -2,17 +2,11 @@ import os
 from scripts.pipeline import *
 from scripts.config import *
 import torch
+import time
+import subprocess
+
 
 torch.set_num_threads(1)
-
-
-
-print("Starting main.py")
-import os
-print("Current working directory:", os.getcwd())
-from scripts.config import *
-print("Config imported")
-
 
 
 
@@ -40,7 +34,22 @@ def main():
 
     
 if __name__ == '__main__':
-        main()
+    # Get line count
+    result = subprocess.run(['wc', '-l', VCF_FULL_PATH], capture_output=True, text=True)
+    total_lines = int(result.stdout.split()[0])
+    print(f"Total lines in VCF: {total_lines}")
 
-
-
+    # get starting time
+    start_time = time.time()
+    main()
+    # get ending time
+    end_time = time.time()
+    # get total time
+    total_time = end_time - start_time
+    
+    # Calculate seconds per line
+    seconds_per_line = total_time / total_lines
+    
+    print(f"Total time: {total_time:.2f} seconds")
+    print(f"Seconds per line: {seconds_per_line:.4f}")
+    print(f"Lines per second: {1/seconds_per_line:.2f}")
