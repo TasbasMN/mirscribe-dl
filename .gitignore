@@ -8,4 +8,4 @@ todo.md
 results/*
 
 # work in progress
-wip/*
+wip/*.DS_Store
