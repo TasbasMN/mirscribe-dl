@@ -1,0 +1,8 @@
+# genome FASTA files
+data/**/*.fa
+
+# todo
+todo.md
+
+# all big result files
+results/*
