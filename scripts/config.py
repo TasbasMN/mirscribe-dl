@@ -29,6 +29,8 @@ def parse_arguments():
                         help='Skip RNAduplex analysis')
     parser.add_argument('-t', '--threshold', default=0.2, type=float,
                         help='Threshold for filtering out pairs')
+    parser.add_argument('-b', '--batch_size', default=64, type=int,
+                        help='Batch size for neural network predictions')
 
 
     return parser.parse_args()
@@ -43,6 +45,7 @@ VERBOSE = args.verbose
 WORKERS = args.workers
 SKIP_RNADUPLEX = args.skip_rnaduplex
 FILTER_THRESHOLD = args.threshold
+BATCH_SIZE = args.batch_size
 
 
 VCF_COLNAMES = ["chr", "pos", "id", "ref", "alt"]

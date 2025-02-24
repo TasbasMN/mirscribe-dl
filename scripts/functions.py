@@ -216,8 +216,9 @@ def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa, with_esa):
 
 
 
+# This function is no longer used as we've optimized the process in process_sequence_pairs
+# Keeping it for backward compatibility
 def prepare_sequence_for_model(mrna_seq, mirna_seq, score_matrix):
-
     """Prepare RNA sequences for model input"""
     # Convert to RNA format
     mirna_seq = mirna_seq.upper().replace("T", "U")
@@ -231,24 +232,81 @@ def prepare_sequence_for_model(mrna_seq, mirna_seq, score_matrix):
     x = encode_RNA(mirna_seq, mirna_esa, mrna_rev_seq, mrna_rev_esa, with_esa=True)
     return torch.from_numpy(x).unsqueeze(0)
 
-def get_model_prediction(model: nn.Module, sequence_tensor: torch.Tensor, device: str) -> float:
-    """Get prediction from model"""
-    sequence_tensor = sequence_tensor.to(device)
+def get_model_predictions_batch(model: nn.Module, sequence_tensors: torch.Tensor, device: str) -> torch.Tensor:
+    """Get predictions from model for a batch of sequences"""
+    sequence_tensors = sequence_tensors.to(device)
     with torch.no_grad():
-        pred = model(sequence_tensor)
-        return torch.sigmoid(pred).item()
+        preds = model(sequence_tensors)
+        return torch.sigmoid(preds).cpu()
 
-def process_sequence_pairs(model, sequence_generator, device, score_matrix):
+def prepare_mirna_for_alignment(mirna_seq):
+    """Pre-process miRNA sequence for alignment"""
+    return mirna_seq.upper().replace("T", "U")
 
-    """Process sequence pairs and return predictions"""
+def prepare_mrna_for_alignment(mrna_seq):
+    """Pre-process mRNA sequence for alignment"""
+    return mrna_seq.upper().replace("T", "U")[::-1]
+
+def process_sequence_pairs(model, sequence_generator, device, score_matrix, batch_size=64):
+    """Process sequence pairs in batches and return predictions with miRNA caching"""
     predictions = {}
+    batch_ids = []
+    batch_tensors = []
+    
+    # Cache for miRNA data to avoid redundant computations
+    mirna_cache = {}
+    
     for combined_id, mrna_seq, mirna_seq in sequence_generator:
-        # Use the full combined_id as key instead of just base_name
-        # This ensures we keep all mRNA-miRNA combinations
-        predictions[combined_id] = {
-            'id': combined_id,
-            'pred': get_model_prediction(model, prepare_sequence_for_model(mrna_seq, mirna_seq, score_matrix), device)
-        }
+        # Check if miRNA is in cache
+        if mirna_seq not in mirna_cache:
+            # Process miRNA and cache the intermediate representations
+            processed_mirna = prepare_mirna_for_alignment(mirna_seq)
+            mirna_cache[mirna_seq] = processed_mirna
+        else:
+            # Use cached miRNA
+            processed_mirna = mirna_cache[mirna_seq]
+            
+        # Process mRNA (always needed as it's different for each pair)
+        processed_mrna = prepare_mrna_for_alignment(mrna_seq)
+        
+        # Alignment and encoding
+        mirna_esa, mrna_rev_esa, _ = extended_seed_alignment(processed_mirna, processed_mrna, score_matrix)
+        x = encode_RNA(processed_mirna, mirna_esa, processed_mrna, mrna_rev_esa, with_esa=True)
+        tensor = torch.from_numpy(x).unsqueeze(0)
+        
+        batch_ids.append(combined_id)
+        batch_tensors.append(tensor)
+        
+        # Process batch when it reaches the specified size
+        if len(batch_tensors) >= batch_size:
+            # Stack tensors into a single batch
+            stacked_tensors = torch.cat(batch_tensors, dim=0)
+            
+            # Get predictions for the entire batch
+            batch_preds = get_model_predictions_batch(model, stacked_tensors, device)
+            
+            # Store predictions
+            for i, combined_id in enumerate(batch_ids):
+                predictions[combined_id] = {
+                    'id': combined_id,
+                    'pred': batch_preds[i].item()
+                }
+            
+            # Clear batch
+            batch_ids = []
+            batch_tensors = []
+    
+    # Process any remaining sequences
+    if batch_tensors:
+        stacked_tensors = torch.cat(batch_tensors, dim=0)
+        batch_preds = get_model_predictions_batch(model, stacked_tensors, device)
+        
+        for i, combined_id in enumerate(batch_ids):
+            predictions[combined_id] = {
+                'id': combined_id,
+                'pred': batch_preds[i].item()
+            }
+    
     return predictions
 
 def create_comparison_results(wt_preds: dict, mut_preds: dict) -> pd.DataFrame:
@@ -267,8 +325,7 @@ def create_comparison_results(wt_preds: dict, mut_preds: dict) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
-def predict_binding_to_df(model, device, df, mirna_dict, score_matrix):
-
+def predict_binding_to_df(model, device, df, mirna_dict, score_matrix, batch_size=64):
     """Main function to orchestrate the prediction process"""
     model.eval()
     
@@ -276,8 +333,8 @@ def predict_binding_to_df(model, device, df, mirna_dict, score_matrix):
     wt_generator = generate_mrna_mirna_pairs(df, mirna_dict, 'wt_seq')
     mut_generator = generate_mrna_mirna_pairs(df, mirna_dict, 'mut_seq')
     
-    wt_predictions = process_sequence_pairs(model, wt_generator, device, score_matrix)
-    mut_predictions = process_sequence_pairs(model, mut_generator, device, score_matrix)
+    wt_predictions = process_sequence_pairs(model, wt_generator, device, score_matrix, batch_size)
+    mut_predictions = process_sequence_pairs(model, mut_generator, device, score_matrix, batch_size)
     
     # Create final results
     return create_comparison_results(wt_predictions, mut_predictions)
