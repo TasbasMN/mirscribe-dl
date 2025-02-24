@@ -12,3 +12,6 @@ wip/*.DS_Store
 
 # all temp files
 scripts/**/*.pyc
+
+# 560 vcf file
+input/vcfs/560.txt
