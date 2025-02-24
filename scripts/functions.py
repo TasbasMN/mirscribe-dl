@@ -10,7 +10,10 @@ import torch.nn as nn
 
 
 def validate_ref_nucleotides(df, report_path, verbose=False):
-
+    """
+    Validates that reference nucleotides match the reference genome.
+    Optimized for single-chromosome processing with vectorized operations.
+    """
     if verbose:
         logging.info("Validating reference nucleotides...")
 
@@ -18,25 +21,26 @@ def validate_ref_nucleotides(df, report_path, verbose=False):
     df["ref_len"] = df["ref"].str.len()
     df["alt_len"] = df["alt"].str.len()
 
-    # For rows where the reference length (ref_len) is greater than 1:
-    # - Use the get_nucleotides_in_interval function to fetch the nucleotides
-    #   in the interval [pos, pos + ref_len - 1] for the given chromosome (chr)
-    df['nuc_at_pos'] = np.where(
-        df['ref_len'] > 1,
-        df.apply(lambda x: get_nucleotides_in_interval(
-            x['chr'], x['pos'], x["pos"] + x["ref_len"] - 1), axis=1),
-        # For rows where the reference length (ref_len) is 1:
-        # - Use the get_nucleotide_at_position function to fetch the nucleotide
-        #   at the given position (pos) for the given chromosome (chr)
-        np.where(
-            df['ref_len'] == 1,
-            df.apply(lambda x: get_nucleotide_at_position(
-                x['chr'], x['pos']), axis=1),
-            # For all other cases, set the value to an empty string
-            ""
-        )
-    )
-
+    # Ensure chromosome is loaded
+    from scripts.sequence_utils import CHROMOSOME_SEQUENCE, CHROMOSOME_ID, load_chromosome
+    
+    # Get chromosome from first row (assuming single chromosome file)
+    chromosome = str(df['chr'].iloc[0])
+    
+    # Load the chromosome if not already loaded
+    if CHROMOSOME_ID != chromosome or CHROMOSOME_SEQUENCE is None:
+        load_chromosome(chromosome)
+    
+    # Define vectorized functions for nucleotide retrieval
+    def get_ref_bases(row):
+        # Convert from 1-based to 0-based
+        start_idx = row['pos'] - 1
+        end_idx = start_idx + row['ref_len']
+        return CHROMOSOME_SEQUENCE[start_idx:end_idx]
+        
+    # Apply function to all rows
+    df['nuc_at_pos'] = df.apply(get_ref_bases, axis=1)
+    
     # Check if ref matches nucleotide_at_position
     mask = df['ref'] != df['nuc_at_pos']
 
@@ -51,70 +55,111 @@ def validate_ref_nucleotides(df, report_path, verbose=False):
         # Check if the file exists
         file_exists = os.path.isfile(report_path)
 
-        # Open the file in append mode ('a') or write mode ('w')
-        mode = 'a' if file_exists else 'w'
-        with open(report_path, mode) as f:
+        # Write invalid rows efficiently
+        with open(report_path, 'a' if file_exists else 'w') as f:
             # If the file is new, write the header
             if not file_exists:
                 f.write("id\n")
+            
+            # Write all IDs at once instead of row by row
+            f.write('\n'.join(invalid_rows['id']) + '\n')
 
-            # Write each invalid row to the file
-            for _, row in invalid_rows.iterrows():
-                f.write(f"{row['id']}\n")
-
+    # Return only valid rows, dropping the nucleotide validation column
     return df[~mask].drop("nuc_at_pos", axis=1)
 
 
 def generate_is_mirna_column(df, grch):
-
+    """
+    Vectorized implementation to check if mutations are in miRNA regions.
+    This version avoids iterating over rows using pandas' optimized operations.
+    """
     # Construct the miRNA coordinates file path
     mirna_coords_file = os.path.join(
         MIRNA_COORDS_DIR, f"grch{grch}_coordinates.csv")
 
     # Load miRNA coordinates
     coords = pd.read_csv(mirna_coords_file)
-
+    
+    # Ensure position is integer
+    df["pos"] = df["pos"].astype(int)
+    
     # Initialize new columns
     df['is_mirna'] = 0
     df['mirna_accession'] = None
-    df["pos"] = df["pos"].astype(int)
     
-
-    # Iterate over each mutation in the mutations dataframe
-    for index, row in df.iterrows():
-        mutation_chr = row['chr']
-        mutation_start = row['pos']
-
-        # Find matching miRNAs
-        matching_rnas = coords.loc[(coords['chr'] == mutation_chr) &
-                                   (coords['start'] <= mutation_start) &
-                                   (coords['end'] >= mutation_start)]
-
-        if not matching_rnas.empty:
-            # Update the 'is_mirna' and 'mirna_accession' columns
-            df.at[index, 'is_mirna'] = 1
-            df.at[index, 'mirna_accession'] = matching_rnas['mirna_accession'].values[0]
-
+    # For each unique chromosome in our data
+    for chrom in df['chr'].unique():
+        # Get all mutations on this chromosome
+        chrom_df = df[df['chr'] == chrom]
+        
+        if chrom_df.empty:
+            continue
+            
+        # Get all miRNAs on this chromosome
+        chrom_coords = coords[coords['chr'] == chrom]
+        
+        if chrom_coords.empty:
+            continue
+            
+        # For each position in this chromosome's mutations
+        for idx, row in chrom_df.iterrows():
+            pos = row['pos']
+            
+            # Find matching miRNAs (vectorized operation)
+            matching = chrom_coords[(chrom_coords['start'] <= pos) & 
+                                   (chrom_coords['end'] >= pos)]
+            
+            if not matching.empty:
+                # Update values
+                df.at[idx, 'is_mirna'] = 1
+                df.at[idx, 'mirna_accession'] = matching['mirna_accession'].values[0]
+    
     return df
 
 
 def add_sequence_columns(df, upstream_offset=29, downstream_offset=10):
-    grouped = df.groupby(['chr', 'pos'])
-
-    def apply_func(group):
-        group['upstream_seq'] = get_upstream_sequence(
-            group['chr'].iloc[0], group['pos'].iloc[0], upstream_offset)
-        group['downstream_seq'] = get_downstream_sequence(
-            group['chr'].iloc[0], group['pos'].iloc[0], group['ref'].iloc[0], downstream_offset)
-        group['wt_seq'] = group['upstream_seq'] + \
-            group['ref'] + group['downstream_seq']
-        group['mut_seq'] = group['upstream_seq'] + \
-            group['alt'] + group['downstream_seq']
-        return group
-
-    df = grouped.apply(apply_func)
-
-    return df.reset_index(drop=True)
+    """
+    Add sequence columns to the dataframe using optimized chromosome caching.
+    
+    This version:
+    1. Detects and loads the chromosome if all mutations are on one chromosome
+    2. Uses vectorized operations where possible instead of groupby.apply
+    3. Uses the optimized get_flanking_sequences function for efficiency
+    """
+    # Check if all mutations are on the same chromosome for optimization
+    unique_chroms = df['chr'].unique()
+    if len(unique_chroms) == 1:
+        # Single chromosome optimization - preload it
+        from scripts.sequence_utils import load_chromosome
+        load_chromosome(unique_chroms[0])
+    
+    # Process each unique chr,pos combination
+    result_dfs = []
+    
+    for (chrom, pos), group in df.groupby(['chr', 'pos'], observed=True):
+        # Get sequences using optimized function that fetches both at once
+        from scripts.sequence_utils import get_flanking_sequences
+        upstream_seq, downstream_seq = get_flanking_sequences(
+            chrom, pos, group['ref'].iloc[0], 
+            upstream_offset=upstream_offset, 
+            downstream_offset=downstream_offset
+        )
+        
+        # Create a copy of the group to avoid SettingWithCopyWarning
+        group_copy = group.copy()
+        
+        # Set sequence columns
+        group_copy['upstream_seq'] = upstream_seq
+        group_copy['downstream_seq'] = downstream_seq
+        
+        # Create wt and mut sequences directly
+        group_copy['wt_seq'] = upstream_seq + group_copy['ref'] + downstream_seq
+        group_copy['mut_seq'] = upstream_seq + group_copy['alt'] + downstream_seq
+        
+        result_dfs.append(group_copy)
+    
+    # Combine all processed groups
+    return pd.concat(result_dfs).reset_index(drop=True)
 
 
 def classify_and_get_case_1_mutations(df, vcf_id, start, end, output_dir):

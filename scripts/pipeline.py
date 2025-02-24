@@ -20,9 +20,22 @@ def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
     fasta_output_file = os.path.join(
         output_dir, f"fasta_{vcf_id}_{start_index}_{end_index}.fa")
 
+    # Optimize memory usage by applying appropriate data types
+    # Convert objects to categorical where appropriate
+    if 'chr' in df.columns and df['chr'].dtype == 'object':
+        df['chr'] = df['chr'].astype('category')
+    
+    # Create unique IDs
     df['id'] = df['id'].astype(str)
     df['id'] += '_' + df['chr'].astype(str) + '_' + df['pos'].astype(
         str) + '_' + df['ref'] + '_' + df['alt']
+
+    # Load the chromosome if all data is from a single chromosome
+    unique_chroms = df['chr'].unique()
+    if len(unique_chroms) == 1:
+        from scripts.sequence_utils import load_chromosome
+        load_chromosome(unique_chroms[0])
+        print(f"Pre-loaded chromosome {unique_chroms[0]} for faster access")
 
     # Step 1: Data Preprocessing
     df = validate_ref_nucleotides(df, invalid_rows_report_file)
@@ -33,14 +46,20 @@ def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
     case_1 = classify_and_get_case_1_mutations(
         df, vcf_id, start_index, end_index, output_dir)
     
-    # gc
+    # Optimize memory usage - only keep essential columns
+    case_1 = case_1[["id", "wt_seq", "mut_seq"]]
+    
+    # Release memory from original dataframe
     del df
     gc.collect()
     
+    # Load miRNA data
     mirna_dict = pd.read_csv(MIRNA_CSV).set_index('mirna_accession')['sequence'].to_dict()
 
+    # Run prediction
     df = predict_binding_to_df(MODEL, DEVICE, case_1, mirna_dict, SCORE_MATRIX, BATCH_SIZE)
 
+    # Post-process results
     df = post_process_predictions(df, DECISION_SURFACE, FILTER_THRESHOLD)
 
     # # Step 3: Prediction Preprocessing
@@ -112,11 +131,28 @@ def process_chunk(chunk, start_index, end_index, output_dir, vcf_id):
 
 
 def run_pipeline(vcf_full_path, chunksize, output_dir, vcf_id):
-
+    """
+    Run the analysis pipeline assuming a single-chromosome input file.
+    
+    This version:
+    1. Pre-loads the chromosome once at the beginning 
+    2. Processes chunks using ThreadPoolExecutor
+    """
+    # Read first chunk to determine which chromosome we're working with
+    first_chunk = next(pd.read_csv(vcf_full_path, chunksize=1, sep="\t", header=None, names=VCF_COLNAMES))
+    chromosome = first_chunk['chr'].iloc[0]
+    
+    # Pre-load the chromosome into memory
+    from scripts.sequence_utils import load_chromosome
+    load_chromosome(chromosome)
+    print(f"Pre-loaded chromosome {chromosome} for entire pipeline")
+    
+    # Process chunks in parallel
     with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-
         futures = []
         start_index = 0
+        
+        # Reset reader to start from beginning
         for chunk in pd.read_csv(vcf_full_path, chunksize=chunksize, sep="\t", header=None, names=VCF_COLNAMES):
             end_index = start_index + len(chunk) - 1
             future = executor.submit(
