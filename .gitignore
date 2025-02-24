@@ -9,3 +9,6 @@ results/*
 
 # work in progress
 wip/*.DS_Store
+
+# all temp files
+scripts/**/*.pyc
