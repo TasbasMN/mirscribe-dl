@@ -39,7 +39,7 @@ def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
     
     mirna_dict = pd.read_csv(MIRNA_CSV).set_index('mirna_accession')['sequence'].to_dict()
 
-    df = predict_binding_to_df(MODEL, DEVICE, case_1, mirna_dict, SCORE_MATRIX)
+    df = predict_binding_to_df(MODEL, DEVICE, case_1, mirna_dict, SCORE_MATRIX, BATCH_SIZE)
 
     df = post_process_predictions(df, DECISION_SURFACE, FILTER_THRESHOLD)
 

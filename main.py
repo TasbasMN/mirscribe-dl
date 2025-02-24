@@ -4,9 +4,13 @@ from scripts.config import *
 import torch
 import time
 import subprocess
+import multiprocessing
 
 
-torch.set_num_threads(1)
+# Use multiple threads for PyTorch operations
+# This allows PyTorch to use multiple CPU cores for tensor operations
+num_physical_cores = max(1, multiprocessing.cpu_count() // 2)
+torch.set_num_threads(num_physical_cores)
 
 
 
