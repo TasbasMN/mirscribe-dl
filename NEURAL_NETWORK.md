@@ -300,13 +300,24 @@ The alignment may introduce gaps ("-") in either sequence to maximize base-pairi
 
 ### 4. One-hot Encoding with Position-Aware Alignment
 
-The final step creates a tensor that preserves both sequence identity and positional relationships:
+The final step creates a tensor that preserves both sequence identity and positional relationships. While our input sequence is 40nt long, our encoding expands this to a length of 50 to accommodate alignments with gaps:
 
 ```
 Input Tensor Shape: (10, 50)
 - First 5 rows: One-hot encoded miRNA nucleotides (A,C,G,U,-)
 - Last 5 rows: One-hot encoded mRNA nucleotides (A,C,G,U,-)
 ```
+
+#### Length Expansion (40nt → 50nt)
+
+The expansion from 40nt to 50nt occurs for several reasons:
+1. **Padding**: We add 5 positions of padding at the beginning of the miRNA sequence
+2. **Alignment gaps**: The ESA process may introduce gaps, requiring additional space
+3. **Biological significance**: This layout better captures the functional binding regions
+
+This length expansion preserves the full sequence context while ensuring the alignment region (which may include gaps) is properly represented.
+
+#### Encoding Visualization
 
 Here's a visualization of the encoding:
 
@@ -330,14 +341,14 @@ The detailed encoding algorithm follows these steps:
 1. **Initialize matrix**:
    ```python
    chars = {"A": 0, "C": 1, "G": 2, "U": 3, "-": 4}
-   x = np.zeros((10, 50), dtype=np.float32)
+   x = np.zeros((10, 50), dtype=np.float32)   # Note: 10 rows, 50 columns
    ```
 
-2. **Encode miRNA with alignment**:
+2. **Encode miRNA with alignment and padding**:
    ```python
-   # First, encode aligned seed region (with gaps if any)
+   # First, encode aligned seed region with 5 positions of padding
    for i in range(len(mirna_esa)):
-       x[chars[mirna_esa[i]], 5 + i] = 1
+       x[chars[mirna_esa[i]], 5 + i] = 1     # Note: 5+ starts after padding
    
    # Then encode rest of miRNA after seed region
    for i in range(10, len(mirna_seq)):
@@ -348,7 +359,7 @@ The detailed encoding algorithm follows these steps:
    ```python
    # Encode first 5 nucleotides before aligned region
    for i in range(5):
-       x[chars[cts_rev_seq[i]] + 5, i] = 1
+       x[chars[cts_rev_seq[i]] + 5, i] = 1   # +5 shifts to second half of matrix
    
    # Encode aligned region (with gaps if any)
    for i in range(len(cts_rev_esa)):
