@@ -362,7 +362,7 @@ def run_pipeline(vcf_full_path, chunksize, output_dir, vcf_id):
                 print(f"Error processing chunk: {e}")
 
 
-def stitch_and_cleanup_csv_files(output_dir: str, final_output_filename: str) -> None:
+def compile_results(output_dir: str, final_output_filename: str) -> None:
     """
     Stitch multiple result CSV files into one and remove the original files.
     
@@ -404,7 +404,6 @@ def stitch_and_cleanup_csv_files(output_dir: str, final_output_filename: str) ->
                 removed_files.append(filename)
         
         print(f"Stitched {len(removed_files)} files into {final_output_filename}")
-        print(f"Removed original files: {', '.join(removed_files)}")
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")

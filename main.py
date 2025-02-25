@@ -1,69 +1,47 @@
-import os
-import time
-import subprocess
-import contextlib
-import torch
-import multiprocessing
+import os, time, subprocess, contextlib, torch, multiprocessing
 from scripts.pipeline import *
 from scripts.config import *
 
-
 def main():
-    # Create the output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    # Check and print CUDA availability
+    
     if torch.cuda.is_available():
-        cuda_device_count = torch.cuda.device_count()
-        print(f"CUDA is available with {cuda_device_count} device(s)")
-        for i in range(cuda_device_count):
-            print(f"Device {i}: {torch.cuda.get_device_name(i)}")
+        devices = torch.cuda.device_count()
+        print(f"CUDA: {devices} device(s)")
+        for i in range(devices):
+            print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
     else:
-        print("CUDA is not available, using CPU")
+        print("CPU mode (no CUDA)")
     
-    print(f"Multiprocessing with {WORKERS} workers")
+    print(f"Workers: {WORKERS}")
     
-    # Run appropriate pipeline based on configuration
     if SINGLE_CHROMOSOME:
         run_pipeline_single(VCF_FULL_PATH, CHUNKSIZE, OUTPUT_DIR, VCF_ID)
-        print("run_pipeline_single   ✓")
+        print("✓ Single pipeline")
     else:
         run_pipeline(VCF_FULL_PATH, CHUNKSIZE, OUTPUT_DIR, VCF_ID)
-        print("run_pipeline         ✓")
+        print("✓ Multi pipeline")
 
-    # Generate results filename and process results
-    results_filename = f"results_{VCF_ID}.csv"
-    stitch_and_cleanup_csv_files(OUTPUT_DIR, results_filename)
-    print("stitch_and_cleanup   ✓")
-
+    compile_results(OUTPUT_DIR, f"results_{VCF_ID}.csv")
+    print("✓ Results compiled")
 
 if __name__ == '__main__':
-    # Set start method for multiprocessing to 'spawn' for proper process isolation
-    # This is particularly important for CUDA operations across multiple processes
     with contextlib.suppress(RuntimeError):
         multiprocessing.set_start_method('spawn')
     
-    # Get line count
     try:
-        result = subprocess.run(['wc', '-l', VCF_FULL_PATH], capture_output=True, text=True, check=True)
-        total_lines = int(result.stdout.split()[0])
-        print(f"Total lines in VCF: {total_lines}")
-    except (subprocess.SubprocessError, ValueError) as e:
-        print(f"Error counting lines in VCF file: {e}")
-        total_lines = 0
+        lines = int(subprocess.run(['wc', '-l', VCF_FULL_PATH], 
+                   capture_output=True, text=True).stdout.split()[0])
+        print(f"VCF: {lines} lines")
+    except:
+        lines = 0
+        print("VCF: line count failed")
 
-    # Get starting time and run main process
-    start_time = time.time()
+    start = time.time()
     main()
-    end_time = time.time()
-    total_time = end_time - start_time
+    elapsed = time.time() - start
     
-    # Calculate and print performance metrics
-    if total_lines > 0:
-        seconds_per_line = total_time / total_lines
-        print(f"Total time: {total_time:.2f} seconds")
-        print(f"Seconds per line: {seconds_per_line:.4f}")
-        print(f"Lines per second: {1/seconds_per_line:.2f}")
-    else:
-        print(f"Total time: {total_time:.2f} seconds")
-        print("Could not calculate per-line metrics")
+    print(f"Time: {elapsed:.2f}s")
+    if lines:
+        spl = elapsed / lines
+        print(f"Speed: {spl:.4f}s/line ({1/spl:.2f} lines/s)")
