@@ -144,9 +144,3 @@ def get_flanks(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
     return up_seq, down_seq
 
 
-@lru_cache(maxsize=None)
-def get_mre_sequence(mrna_sequence, mrna_end, mirna_start, mirna_length):
-    mre_end = mrna_end + mirna_start
-    # Ensure MRE start is not negative
-    mre_start = max(mre_end - mirna_length, 0)
-    return mrna_sequence[mre_start:mre_end]
