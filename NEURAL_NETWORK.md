@@ -15,6 +15,29 @@ TargetNet
 └── Fully Connected Layer
 ```
 
+### Understanding ResNet Architecture
+
+ResNet (Residual Network) is a pioneering neural network architecture that introduced "skip connections" or "shortcuts" to solve the vanishing gradient problem in deep networks:
+
+1. **Core Concept**: Unlike traditional sequential networks, ResNet allows information to skip layers via identity connections, enabling the training of much deeper networks.
+
+2. **Residual Learning**: Instead of learning the desired underlying mapping directly, ResNet blocks learn the residual (difference) between input and output, which is often easier to optimize.
+
+3. **Skip Connections**: The defining feature of ResNet is its skip connections, which add the input of a layer directly to its output:
+   ```
+   Output = F(Input) + Input
+   ```
+   where F() represents the convolution layers.
+
+4. **Advantages**:
+   - Solves vanishing/exploding gradient problems
+   - Enables training of very deep networks
+   - Improves gradient flow through the network
+   - Provides faster convergence during training
+   - Often results in better performance with fewer parameters
+
+In TargetNet, we utilize a 1D variant of ResNet optimized for sequence data, where the skip connections help maintain important positional and sequential information throughout the network.
+
 ### Network Configuration
 
 - **Input Dimensions**: 10 channels × 50 length (one-hot encoded RNA sequences with alignment)
