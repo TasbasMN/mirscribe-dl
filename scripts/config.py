@@ -77,7 +77,7 @@ WORKERS = args.workers
 BATCH_SIZE = args.batch_size
 VERBOSE = args.verbose
 SKIP_RNADUPLEX = args.skip_rnaduplex
-FILTER_THRESHOLD = args.threshold
+FILTER_THRESH = args.threshold
 SINGLE_CHROMOSOME = args.single_chromosome
 
 # Output settings
@@ -91,7 +91,7 @@ MIRNA_CSV = "data/mirna/mirna.csv"
 # Sequence analysis settings
 UPSTREAM_OFFSET = 29
 DOWNSTREAM_OFFSET = 10
-DECISION_SURFACE = 0.5
+DEC_SURF = 0.5
 
 # Model configuration
 class ModelConfig:
@@ -141,12 +141,12 @@ else:
     MODEL.load_state_dict(torch.load(MODEL_PATH, weights_only=True, map_location=DEVICE))
 
 # RNA pairing score matrix
-SCORE_MATRIX = {}
+S_MATRIX = {}
 for c1 in 'ACGU':
     for c2 in 'ACGU':
         if (c1, c2) in [('A', 'U'), ('U', 'A'), ('G', 'C'), ('C', 'G')]:
-            SCORE_MATRIX[(c1, c2)] = 1
+            S_MATRIX[(c1, c2)] = 1
         elif (c1, c2) in [('U', 'G'), ('G', 'U')]:
-            SCORE_MATRIX[(c1, c2)] = 1
+            S_MATRIX[(c1, c2)] = 1
         else:
-            SCORE_MATRIX[(c1, c2)] = 0
+            S_MATRIX[(c1, c2)] = 0
