@@ -4,10 +4,31 @@ import gc
 from typing import List
 import pandas as pd
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import torch
 from scripts.functions import *
+from scripts.targetnet import TargetNet
 
 from scripts.config import *
+
+# Global model variable that will be initialized in each worker process
+MODEL = None
+
+def init_worker(model_path, device_str, model_cfg):
+    """Initialize the model in each worker process"""
+    global MODEL
+    
+    # Set device for this process
+    device = torch.device(device_str)
+    
+    # Create a new model instance for this process
+    model = TargetNet(model_cfg, with_esa=True, dropout_rate=0.5)
+    MODEL = model.to(device)
+    
+    # Load model weights
+    MODEL.load_state_dict(torch.load(model_path, weights_only=True, map_location=device))
+    MODEL.eval()
 
 
 def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
@@ -37,9 +58,17 @@ def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
     del df
     gc.collect()
     
+    # Use the global MODEL initialized for this process
+    global MODEL
+    
+    # Get the device this model is on
+    model_device = next(MODEL.parameters()).device
+    
+    # Load miRNA sequences
     mirna_dict = pd.read_csv(MIRNA_CSV).set_index('mirna_accession')['sequence'].to_dict()
 
-    df = predict_binding_to_df(MODEL, DEVICE, case_1, mirna_dict, SCORE_MATRIX, BATCH_SIZE)
+    # Make predictions using the process-local model
+    df = predict_binding_to_df(MODEL, model_device, case_1, mirna_dict, SCORE_MATRIX, BATCH_SIZE)
 
     df = post_process_predictions(df, DECISION_SURFACE, FILTER_THRESHOLD)
 
@@ -98,31 +127,68 @@ def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
     return df
 
 
-def process_chunk(chunk, start_index, end_index, output_dir, vcf_id):
-
+def process_chunk(chunk, start_index, end_index, output_dir, vcf_id, score_matrix, decision_surface, filter_threshold, batch_size):
+    """Process a chunk of data using the worker's model instance"""
+    global MODEL
+    
+    # Check if MODEL is initialized
+    if MODEL is None:
+        raise RuntimeError("Worker not properly initialized. MODEL is None.")
+    
+    # Get the worker's process ID for logging
+    process_id = multiprocessing.current_process().name
+    print(f"Process {process_id} processing chunk {start_index}-{end_index}")
+    
+    # Pass the global MODEL to the analysis pipeline
     result = analysis_pipeline(
         chunk, start_index, end_index, output_dir, vcf_id)
-
+    
     # Write the result to a CSV file in the output directory
     result_file = os.path.join(
         output_dir, f'result_{start_index}_{end_index}.csv')
     result.to_csv(result_file, index=False)
-
+    
+    print(f"Process {process_id} completed chunk {start_index}-{end_index}")
     return start_index, end_index
 
 
 def run_pipeline(vcf_full_path, chunksize, output_dir, vcf_id):
-
-    with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-
+    """Run the pipeline using multiprocessing"""
+    
+    # Create a process pool with initialized workers
+    # Each worker will have its own model instance
+    with ProcessPoolExecutor(
+        max_workers=WORKERS,
+        initializer=init_worker,
+        initargs=(MODEL_PATH, "cuda" if torch.cuda.is_available() else "cpu", model_cfg)
+    ) as executor:
+        
+        print(f"Starting multiprocessing pool with {WORKERS} workers")
+        
+        # Submit chunk processing jobs to the executor
         futures = []
         start_index = 0
         for chunk in pd.read_csv(vcf_full_path, chunksize=chunksize, sep="\t", header=None, names=VCF_COLNAMES):
             end_index = start_index + len(chunk) - 1
             future = executor.submit(
-                process_chunk, chunk, start_index, end_index, output_dir, vcf_id)
+                process_chunk, 
+                chunk, 
+                start_index, 
+                end_index, 
+                output_dir, 
+                vcf_id,
+                SCORE_MATRIX,
+                DECISION_SURFACE,
+                FILTER_THRESHOLD,
+                BATCH_SIZE
+            )
             futures.append(future)
             start_index = end_index + 1
-
+        
+        # Process results as they complete
         for future in as_completed(futures):
-            start_index, end_index = future.result()
+            try:
+                start_index, end_index = future.result()
+                print(f"Completed chunk {start_index}-{end_index}")
+            except Exception as e:
+                print(f"Error processing chunk: {e}")

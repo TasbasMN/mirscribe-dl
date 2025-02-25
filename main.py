@@ -7,22 +7,32 @@ import subprocess
 import multiprocessing
 
 
-# Use multiple threads for PyTorch operations
-# This allows PyTorch to use multiple CPU cores for tensor operations
-num_physical_cores = max(1, multiprocessing.cpu_count() // 2)
-torch.set_num_threads(num_physical_cores)
-
-
-
-            
-
+# Set start method for multiprocessing to 'spawn' for proper process isolation
+# This is particularly important for CUDA operations across multiple processes
+if __name__ == '__main__':
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        # Method already set
+        pass
 
 
 def main():
-
     # Create the output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+    # Print CUDA availability and device count
+    if torch.cuda.is_available():
+        cuda_device_count = torch.cuda.device_count()
+        print(f"CUDA is available with {cuda_device_count} device(s)")
+        for i in range(cuda_device_count):
+            print(f"Device {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("CUDA is not available, using CPU")
+    
+    print(f"Multiprocessing with {WORKERS} workers")
+    
+    # Run the pipeline
     run_pipeline(VCF_FULL_PATH, CHUNKSIZE, OUTPUT_DIR, VCF_ID)
     print("run_pipeline         ✓")
 
@@ -36,19 +46,19 @@ def main():
 
     # delete_files(OUTPUT_DIR, "rnad", ".csv")
 
-    
+
 if __name__ == '__main__':
     # Get line count
     result = subprocess.run(['wc', '-l', VCF_FULL_PATH], capture_output=True, text=True)
     total_lines = int(result.stdout.split()[0])
     print(f"Total lines in VCF: {total_lines}")
 
-    # get starting time
+    # Get starting time
     start_time = time.time()
     main()
-    # get ending time
+    # Get ending time
     end_time = time.time()
-    # get total time
+    # Get total time
     total_time = end_time - start_time
     
     # Calculate seconds per line

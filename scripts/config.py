@@ -7,7 +7,7 @@ from scripts.targetnet import TargetNet
 def parse_arguments():
     """Parse command line arguments for VCF processing pipeline"""
     parser = argparse.ArgumentParser(
-        description='Process a VCF file in chunks using concurrent futures.')
+        description='Process a VCF file in chunks using true multiprocessing.')
     
     # File input settings
     parser.add_argument('-f', '--file_path', 
@@ -28,7 +28,16 @@ def parse_arguments():
     parser.add_argument('-w', '--workers', 
                         default=os.cpu_count(),
                         type=int, 
-                        help='Number of concurrent workers')
+                        help='Number of worker processes (default: all CPU cores)')
+    
+    # GPU settings
+    parser.add_argument('--cpu-only', 
+                        action='store_true',
+                        help='Force CPU usage even if CUDA is available')
+    parser.add_argument('--gpu-devices',
+                        type=str,
+                        default=None,
+                        help='Comma-separated list of GPU device indices to use (e.g., "0,1,2")')
     
     # Output settings
     parser.add_argument("-o", '--output_dir', 
@@ -89,15 +98,42 @@ class ModelConfig:
         self.block_kernel_size = 3
         self.pool_size = 3
 
-# Initialize model
-DEVICE = device("cuda" if cuda.is_available() else "cpu")
+# Handle GPU settings
+CPU_ONLY = args.cpu_only
+GPU_DEVICES = args.gpu_devices
+
+# Process GPU device configuration
+if GPU_DEVICES and not CPU_ONLY:
+    # Set visible devices based on user input
+    os.environ["CUDA_VISIBLE_DEVICES"] = GPU_DEVICES
+    print(f"Using GPU devices: {GPU_DEVICES}")
+
+# Determine device to use
+if CPU_ONLY:
+    DEVICE = device("cpu")
+    print("Forcing CPU usage as requested")
+else:
+    DEVICE = device("cuda" if cuda.is_available() else "cpu")
+    if DEVICE.type == "cuda":
+        print(f"Using CUDA with {torch.cuda.device_count()} visible devices")
+    else:
+        print("CUDA not available, using CPU")
+
+# Model configuration
 MODEL_PATH = "models/TargetNet.pt"
 model_cfg = ModelConfig()
 
-# Load model in ESA mode
-model = TargetNet(model_cfg, with_esa=True, dropout_rate=0.5)
-MODEL = model.to(DEVICE)
-MODEL.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
+# For the main process, we'll initialize a model instance
+# Each worker process will initialize its own model copy
+if DEVICE.type == "cuda":
+    # Do not initialize model in main process when running with CUDA
+    # to avoid CUDA initialization issues
+    MODEL = None
+else:
+    # For CPU mode, initialize model in main process
+    model = TargetNet(model_cfg, with_esa=True, dropout_rate=0.5)
+    MODEL = model.to(DEVICE)
+    MODEL.load_state_dict(torch.load(MODEL_PATH, weights_only=True, map_location=DEVICE))
 
 # RNA pairing score matrix
 SCORE_MATRIX = {}
