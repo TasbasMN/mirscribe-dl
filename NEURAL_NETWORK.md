@@ -174,16 +174,16 @@ def process_sequence_pairs(model, sequence_generator, device, score_matrix, batc
     return predictions
 ```
 
-## Step-by-Step Sequence Transformation
+## Complete Sequence Transformation Pipeline
 
-This section provides a detailed explanation of how a raw genomic sequence is transformed into the neural network input matrix.
+This section provides a detailed, step-by-step explanation of how genomic sequences are transformed for neural network analysis, following the data flow from raw genomic sequence to prediction-ready tensor.
 
-### 1. Sequence Extraction
+### 1. Sequence Extraction from Genomic Context
 
-When a mutation is identified, we extract sequences for analysis using the `get_flanks` function:
+When a mutation is identified in a VCF file, we extract flanking sequences to provide genomic context:
 
 ```python
-def get_flanks(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
+def get_flanks(chrom, pos, ref, upstream_offset=29, downstream_offset=10):
     """Get both upstream and downstream sequences efficiently."""
     pos = int(pos)
     
@@ -201,63 +201,91 @@ def get_flanks(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
     return up_seq, down_seq
 ```
 
-For each variant, we create:
+For each variant, we create two sequences:
 - **Wild-type sequence**: `upstream_seq + ref + downstream_seq`
 - **Mutant sequence**: `upstream_seq + alt + downstream_seq`
 
 By default, we use:
 - 29 nucleotides upstream of the mutation
-- The reference or alternate allele
+- The reference or alternate allele (at position 30)
 - 10 nucleotides downstream
 
-This creates a 40-nucleotide sequence (for a single-nucleotide variant) that provides context for the mutation.
+This creates a 40-nucleotide sequence (for a single-nucleotide variant) with the mutation at position 30.
 
-### 2. Sequence Preparation for miRNA-mRNA Alignment
+Example:
+```
+Chromosome sequence: ...AGCTCTAGCTAGCTAGCTAGCGATTCGATCGTAGCTAGCTAGCTAGC...
+                                                 ^ mutation site (G→C)
 
-Each 40-nucleotide mRNA sequence undergoes these transformations:
+Extracted wild-type: AGCTCTAGCTAGCTAGCTAGCGATTCGATCGTAGCTA (40 nt)
+                                         ^ mutation at position 30
 
-1. **DNA to RNA conversion**: Replace 'T' with 'U'
+Extracted mutant:    AGCTCTAGCTAGCTAGCTAGCGATTCGATCGTAGCTA (40 nt)
+                                         ^ mutation at position 30
+```
+
+### 2. Sequence Preparation and Reversal
+
+Each 40-nucleotide sequence undergoes two critical transformations:
+
+1. **DNA to RNA conversion**: Replace 'T' with 'U' to convert DNA to RNA format
    ```python
    mrna_seq = mrna_seq.upper().replace("T", "U")
    ```
 
-2. **Sequence reversal**: Reverse the sequence to simulate target binding orientation
+2. **Sequence reversal**: Reverse the sequence to simulate the biological target binding orientation
    ```python
    mrna_rev_seq = mrna_seq[::-1]  # e.g., ACGU → UGCA
    ```
 
-The miRNA sequence follows a similar conversion from DNA to RNA format.
+After reversal, the mutation position shifts from position 30 to position 10 (counting from 0 in the reversed sequence).
+
+Example:
+```
+Original:  AGCUCUAGCUAGCUAGCUAGCGAUUCGAUCGUAGCUA
+                                 ^ mutation at position 30
+
+Reversed:  AUCGAUGCUAGCUAGCUAGCUUAGCGAUCGAUCGCA
+                    ^ mutation now at position 10
+```
+
+This positioning is crucial because in the next step, we align the miRNA seed region with a specific section of this reversed sequence that includes the mutation site.
 
 ### 3. Extended Seed Alignment (ESA)
 
-The ESA process aligns the miRNA seed region (nucleotides 1-10) with a specific region of the reversed mRNA (nucleotides 5-15):
+The core of our approach is aligning the miRNA seed region with the potential target site that includes the mutation:
 
 ```python
 # For a miRNA sequence like "AGCUGCCAAUUCGAUACGA"
-# And an mRNA sequence like "UACGAUUCAACCGUCGAGACUAUGGCUAA" (reversed)
-mi_seq_slice = mi_seq[:10]         # Take first 10 nt: "AGCUGCCAAU"
-cts_r_seq_slice = cts_r_seq[5:15]  # Take nt 5-15: "UUCAACCGUC"
+# And a reversed mRNA sequence like "AUCGAUGCUAGCUAGCUAGCUUAGCGAUCGAUCGCA"
+mi_seq_slice = mi_seq[:10]           # Take first 10 nt: "AGCUGCCAAU"
+cts_r_seq_slice = cts_r_seq[5:15]    # Take nt 5-15 (includes mutation at pos 10): "UGCUAGCUAG"
 
 # Global alignment introduces gaps to optimize matching
 alignment = pairwise2.align.globaldx(mi_seq_slice, cts_r_seq_slice, score_matrix)
 # Example result:
 # mi_esa = "AGCUGCCAAU"
-# cts_r_esa = "UUC-ACCGUC"  (a gap was introduced)
+# cts_r_esa = "UGC-AGCUAG"  (a gap was introduced)
 ```
 
-This alignment is crucial because it models the biological seed-target interaction mechanism of miRNAs.
+By extracting positions 5-15 from the reversed sequence, we ensure that:
+1. The mutation (at position 10) is included in the alignment region
+2. We have enough context (5nt before) for proper seed alignment
+3. We capture the biological mechanism where miRNA seed regions (positions 2-8) align with mRNA targets
 
-### 4. One-hot Encoding with Alignment Integration
+The alignment may introduce gaps ("-") in either sequence to maximize base-pairing, mimicking the biological process of RNA hybridization.
 
-The neural network input requires a specific format that captures both sequences and their alignment:
+### 4. One-hot Encoding with Position-Aware Alignment
+
+The final step creates a tensor that preserves both sequence identity and positional relationships:
 
 ```
 Input Tensor Shape: (10, 50)
-- First 5 rows: One-hot encoded miRNA (includes alignment)
-- Last 5 rows: One-hot encoded mRNA (includes alignment)
+- First 5 rows: One-hot encoded miRNA nucleotides (A,C,G,U,-)
+- Last 5 rows: One-hot encoded mRNA nucleotides (A,C,G,U,-)
 ```
 
-Here's a visualization of the encoding process:
+Here's a visualization of the encoding:
 
 ```
     0  1  2  3  4  5  6  7  8 ... 49
@@ -274,54 +302,65 @@ U | 1  0  0  0  0  0  0  0  0 ...  0  ← mRNA U nucleotides
 - | 0  0  0  0  0  0  0  1  0 ...  0  ← mRNA gap positions
 ```
 
-The detailed encoding process:
+The detailed encoding algorithm follows these steps:
 
-1. **Initialize matrix**: Create a 10×50 matrix of zeros
+1. **Initialize matrix**:
    ```python
+   chars = {"A": 0, "C": 1, "G": 2, "U": 3, "-": 4}
    x = np.zeros((10, 50), dtype=np.float32)
    ```
 
-2. **Encode miRNA with ESA**:
-   - First, encode the aligned seed region (with potential gaps)
-   - Then, encode the rest of the miRNA after the seed region
+2. **Encode miRNA with alignment**:
    ```python
-   # Encode aligned seed region
+   # First, encode aligned seed region (with gaps if any)
    for i in range(len(mirna_esa)):
        x[chars[mirna_esa[i]], 5 + i] = 1
    
-   # Encode rest of miRNA after seed
+   # Then encode rest of miRNA after seed region
    for i in range(10, len(mirna_seq)):
        x[chars[mirna_seq[i]], 5 + i - 10 + len(mirna_esa)] = 1
    ```
 
-3. **Encode mRNA with ESA**:
-   - First 5 nucleotides before the aligned region
-   - The aligned region (with potential gaps)
-   - Remaining nucleotides after position 15
+3. **Encode mRNA with alignment**:
    ```python
-   # Encode first 5 nucleotides
+   # Encode first 5 nucleotides before aligned region
    for i in range(5):
        x[chars[cts_rev_seq[i]] + 5, i] = 1
    
-   # Encode aligned region
+   # Encode aligned region (with gaps if any)
    for i in range(len(cts_rev_esa)):
        x[chars[cts_rev_esa[i]] + 5, i + 5] = 1
    
-   # Encode rest of sequence
+   # Encode remaining nucleotides after aligned region
    for i in range(15, len(cts_rev_seq)):
        x[chars[cts_rev_seq[i]] + 5, i + 5 - 15 + len(cts_rev_esa)] = 1
    ```
 
-4. **Convert to PyTorch tensor**:
+4. **Finalize tensor**:
    ```python
    tensor = torch.from_numpy(x).unsqueeze(0)  # Add batch dimension
    ```
 
-This encoding preserves:
-- The sequence information (which nucleotides are present)
-- The position information (where each nucleotide is located)
-- The alignment information (how the seed region aligns with the target site)
-- Gap information (where insertions or deletions occur)
+This encoding meticulously preserves:
+- Nucleotide identity (which bases are present)
+- Positional information (where each base is located)
+- Alignment structure (how bases match up)
+- Gap insertions (where alignment requires gaps)
+- The relative position of the mutation within the alignment
+
+The mutation site is specially positioned within the alignment region to ensure the neural network can detect how sequence changes affect binding potential.
+
+### Tracing the Mutation Through the Pipeline
+
+To clearly illustrate how a mutation is tracked through this process:
+
+1. **Original VCF mutation**: A variant at chromosome position X
+2. **Extracted sequence**: 40nt with mutation at position 30 (from 0-based index)
+3. **Reversed sequence**: Mutation now at position 10 from the 5' end
+4. **Alignment region**: Positions 5-15 of reversed sequence, including the mutation
+5. **Encoded tensor**: Mutation is represented within the aligned region of the tensor
+
+This precise positioning ensures that the neural network can accurately assess how the mutation affects miRNA binding.
 
 The resulting tensor is then fed into the TargetNet neural network for binding prediction.
 
