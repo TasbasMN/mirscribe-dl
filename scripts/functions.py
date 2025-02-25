@@ -7,9 +7,64 @@ from Bio import pairwise2
 import torch
 import torch.nn as nn
 
-
-
 def validate_ref_nucleotides(df, report_path, verbose=False):
+
+    if verbose:
+        logging.info("Validating reference nucleotides...")
+
+    # Add ref_len and alt_len columns
+    df["ref_len"] = df["ref"].str.len()
+    df["alt_len"] = df["alt"].str.len()
+
+    # For rows where the reference length (ref_len) is greater than 1:
+    # - Use the get_nucleotides_in_interval function to fetch the nucleotides
+    #   in the interval [pos, pos + ref_len - 1] for the given chromosome (chr)
+    df['nuc_at_pos'] = np.where(
+        df['ref_len'] > 1,
+        df.apply(lambda x: get_nucleotides_in_interval(
+            x['chr'], x['pos'], x["pos"] + x["ref_len"] - 1), axis=1),
+        # For rows where the reference length (ref_len) is 1:
+        # - Use the get_nucleotide_at_position function to fetch the nucleotide
+        #   at the given position (pos) for the given chromosome (chr)
+        np.where(
+            df['ref_len'] == 1,
+            df.apply(lambda x: get_nucleotide_at_position(
+                x['chr'], x['pos']), axis=1),
+            # For all other cases, set the value to an empty string
+            ""
+        )
+    )
+
+    # Check if ref matches nucleotide_at_position
+    mask = df['ref'] != df['nuc_at_pos']
+
+    # Isolate invalid rows
+    invalid_rows = df[mask]
+
+    if not invalid_rows.empty:
+        if verbose:
+            logging.warning(
+                f"Writing {len(invalid_rows)} invalid rows to {report_path}")
+
+        # Check if the file exists
+        file_exists = os.path.isfile(report_path)
+
+        # Open the file in append mode ('a') or write mode ('w')
+        mode = 'a' if file_exists else 'w'
+        with open(report_path, mode) as f:
+            # If the file is new, write the header
+            if not file_exists:
+                f.write("id\n")
+
+            # Write each invalid row to the file
+            for _, row in invalid_rows.iterrows():
+                f.write(f"{row['id']}\n")
+
+    return df[~mask].drop("nuc_at_pos", axis=1)
+
+
+
+def validate_ref_nucleotides_single(df, report_path, verbose=False):
     """
     Validates that reference nucleotides match the reference genome.
     Optimized for single-chromosome processing with vectorized operations.
@@ -69,6 +124,38 @@ def validate_ref_nucleotides(df, report_path, verbose=False):
 
 
 def generate_is_mirna_column(df, grch):
+
+    # Construct the miRNA coordinates file path
+    mirna_coords_file = os.path.join(
+        MIRNA_COORDS_DIR, f"grch{grch}_coordinates.csv")
+
+    # Load miRNA coordinates
+    coords = pd.read_csv(mirna_coords_file)
+
+    # Initialize new columns
+    df['is_mirna'] = 0
+    df['mirna_accession'] = None
+    df["pos"] = df["pos"].astype(int)
+    
+
+    # Iterate over each mutation in the mutations dataframe
+    for index, row in df.iterrows():
+        mutation_chr = row['chr']
+        mutation_start = row['pos']
+
+        # Find matching miRNAs
+        matching_rnas = coords.loc[(coords['chr'] == mutation_chr) &
+                                   (coords['start'] <= mutation_start) &
+                                   (coords['end'] >= mutation_start)]
+
+        if not matching_rnas.empty:
+            # Update the 'is_mirna' and 'mirna_accession' columns
+            df.at[index, 'is_mirna'] = 1
+            df.at[index, 'mirna_accession'] = matching_rnas['mirna_accession'].values[0]
+
+    return df
+
+def generate_is_mirna_column_single(df, grch):
     """
     Vectorized implementation to check if mutations are in miRNA regions.
     This version avoids iterating over rows using pandas' optimized operations.
@@ -117,7 +204,28 @@ def generate_is_mirna_column(df, grch):
     return df
 
 
+
+
 def add_sequence_columns(df, upstream_offset=29, downstream_offset=10):
+    grouped = df.groupby(['chr', 'pos'])
+
+    def apply_func(group):
+        group['upstream_seq'] = get_upstream_sequence(
+            group['chr'].iloc[0], group['pos'].iloc[0], upstream_offset)
+        group['downstream_seq'] = get_downstream_sequence(
+            group['chr'].iloc[0], group['pos'].iloc[0], group['ref'].iloc[0], downstream_offset)
+        group['wt_seq'] = group['upstream_seq'] + \
+            group['ref'] + group['downstream_seq']
+        group['mut_seq'] = group['upstream_seq'] + \
+            group['alt'] + group['downstream_seq']
+        return group
+
+    df = grouped.apply(apply_func)
+
+    return df.reset_index(drop=True)
+
+
+def add_sequence_columns_single(df, upstream_offset=29, downstream_offset=10):
     """
     Add sequence columns to the dataframe using optimized chromosome caching.
     

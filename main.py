@@ -32,9 +32,14 @@ def main():
     
     print(f"Multiprocessing with {WORKERS} workers")
     
-    # Run the pipeline
-    run_pipeline(VCF_FULL_PATH, CHUNKSIZE, OUTPUT_DIR, VCF_ID)
-    print("run_pipeline         ✓")
+    if SINGLE_CHROMOSOME:
+        run_pipeline_single(VCF_FULL_PATH, CHUNKSIZE, OUTPUT_DIR, VCF_ID)
+        print("run_pipeline_single   ✓")
+    
+    else:
+        run_pipeline(VCF_FULL_PATH, CHUNKSIZE, OUTPUT_DIR, VCF_ID)
+        print("run_pipeline         ✓")
+
 
     results_filename = f"results_{VCF_ID}.csv"
     

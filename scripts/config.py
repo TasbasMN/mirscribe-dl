@@ -56,6 +56,9 @@ def parse_arguments():
                         default=0.2, 
                         type=float,
                         help='Threshold for filtering out pairs')
+    parser.add_argument("-s", '--single-chromosome', 
+                        action='store_true',
+                        help='Optimize for processing a single-chromosome file by pre-loading it into memory')
 
 
     return parser.parse_args()
@@ -75,7 +78,7 @@ BATCH_SIZE = args.batch_size
 VERBOSE = args.verbose
 SKIP_RNADUPLEX = args.skip_rnaduplex
 FILTER_THRESHOLD = args.threshold
-BATCH_SIZE = args.batch_size
+SINGLE_CHROMOSOME = args.single_chromosome
 
 # Output settings
 OUTPUT_DIR = os.path.join(args.output_dir, f"{VCF_ID}_{CHUNKSIZE}")
