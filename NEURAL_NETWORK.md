@@ -174,6 +174,157 @@ def process_sequence_pairs(model, sequence_generator, device, score_matrix, batc
     return predictions
 ```
 
+## Step-by-Step Sequence Transformation
+
+This section provides a detailed explanation of how a raw genomic sequence is transformed into the neural network input matrix.
+
+### 1. Sequence Extraction
+
+When a mutation is identified, we extract sequences for analysis using the `get_flanks` function:
+
+```python
+def get_flanks(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
+    """Get both upstream and downstream sequences efficiently."""
+    pos = int(pos)
+    
+    # Calculate regions
+    up_start = max(1, pos - upstream_offset)
+    up_end = pos - 1
+    
+    down_start = pos + len(ref)
+    down_end = down_start + downstream_offset - 1
+    
+    # Get sequences from chromosome cache
+    up_seq = CHROMOSOME_SEQUENCE[up_start-1:up_end]
+    down_seq = CHROMOSOME_SEQUENCE[down_start-1:down_end]
+    
+    return up_seq, down_seq
+```
+
+For each variant, we create:
+- **Wild-type sequence**: `upstream_seq + ref + downstream_seq`
+- **Mutant sequence**: `upstream_seq + alt + downstream_seq`
+
+By default, we use:
+- 29 nucleotides upstream of the mutation
+- The reference or alternate allele
+- 10 nucleotides downstream
+
+This creates a 40-nucleotide sequence (for a single-nucleotide variant) that provides context for the mutation.
+
+### 2. Sequence Preparation for miRNA-mRNA Alignment
+
+Each 40-nucleotide mRNA sequence undergoes these transformations:
+
+1. **DNA to RNA conversion**: Replace 'T' with 'U'
+   ```python
+   mrna_seq = mrna_seq.upper().replace("T", "U")
+   ```
+
+2. **Sequence reversal**: Reverse the sequence to simulate target binding orientation
+   ```python
+   mrna_rev_seq = mrna_seq[::-1]  # e.g., ACGU → UGCA
+   ```
+
+The miRNA sequence follows a similar conversion from DNA to RNA format.
+
+### 3. Extended Seed Alignment (ESA)
+
+The ESA process aligns the miRNA seed region (nucleotides 1-10) with a specific region of the reversed mRNA (nucleotides 5-15):
+
+```python
+# For a miRNA sequence like "AGCUGCCAAUUCGAUACGA"
+# And an mRNA sequence like "UACGAUUCAACCGUCGAGACUAUGGCUAA" (reversed)
+mi_seq_slice = mi_seq[:10]         # Take first 10 nt: "AGCUGCCAAU"
+cts_r_seq_slice = cts_r_seq[5:15]  # Take nt 5-15: "UUCAACCGUC"
+
+# Global alignment introduces gaps to optimize matching
+alignment = pairwise2.align.globaldx(mi_seq_slice, cts_r_seq_slice, score_matrix)
+# Example result:
+# mi_esa = "AGCUGCCAAU"
+# cts_r_esa = "UUC-ACCGUC"  (a gap was introduced)
+```
+
+This alignment is crucial because it models the biological seed-target interaction mechanism of miRNAs.
+
+### 4. One-hot Encoding with Alignment Integration
+
+The neural network input requires a specific format that captures both sequences and their alignment:
+
+```
+Input Tensor Shape: (10, 50)
+- First 5 rows: One-hot encoded miRNA (includes alignment)
+- Last 5 rows: One-hot encoded mRNA (includes alignment)
+```
+
+Here's a visualization of the encoding process:
+
+```
+    0  1  2  3  4  5  6  7  8 ... 49
+    --------------------------------
+A | 0  0  0  0  0  1  0  0  0 ...  0  ← miRNA A nucleotides
+C | 0  0  0  0  0  0  0  1  0 ...  0  ← miRNA C nucleotides
+G | 0  0  0  0  0  0  1  0  0 ...  0  ← miRNA G nucleotides
+U | 0  0  0  0  0  0  0  0  0 ...  0  ← miRNA U nucleotides
+- | 0  0  0  0  0  0  0  0  1 ...  0  ← miRNA gap positions
+A | 0  0  0  0  0  0  0  0  0 ...  0  ← mRNA A nucleotides
+C | 0  0  0  0  1  0  0  0  0 ...  0  ← mRNA C nucleotides
+G | 0  0  0  0  0  0  0  0  0 ...  0  ← mRNA G nucleotides
+U | 1  0  0  0  0  0  0  0  0 ...  0  ← mRNA U nucleotides
+- | 0  0  0  0  0  0  0  1  0 ...  0  ← mRNA gap positions
+```
+
+The detailed encoding process:
+
+1. **Initialize matrix**: Create a 10×50 matrix of zeros
+   ```python
+   x = np.zeros((10, 50), dtype=np.float32)
+   ```
+
+2. **Encode miRNA with ESA**:
+   - First, encode the aligned seed region (with potential gaps)
+   - Then, encode the rest of the miRNA after the seed region
+   ```python
+   # Encode aligned seed region
+   for i in range(len(mirna_esa)):
+       x[chars[mirna_esa[i]], 5 + i] = 1
+   
+   # Encode rest of miRNA after seed
+   for i in range(10, len(mirna_seq)):
+       x[chars[mirna_seq[i]], 5 + i - 10 + len(mirna_esa)] = 1
+   ```
+
+3. **Encode mRNA with ESA**:
+   - First 5 nucleotides before the aligned region
+   - The aligned region (with potential gaps)
+   - Remaining nucleotides after position 15
+   ```python
+   # Encode first 5 nucleotides
+   for i in range(5):
+       x[chars[cts_rev_seq[i]] + 5, i] = 1
+   
+   # Encode aligned region
+   for i in range(len(cts_rev_esa)):
+       x[chars[cts_rev_esa[i]] + 5, i + 5] = 1
+   
+   # Encode rest of sequence
+   for i in range(15, len(cts_rev_seq)):
+       x[chars[cts_rev_seq[i]] + 5, i + 5 - 15 + len(cts_rev_esa)] = 1
+   ```
+
+4. **Convert to PyTorch tensor**:
+   ```python
+   tensor = torch.from_numpy(x).unsqueeze(0)  # Add batch dimension
+   ```
+
+This encoding preserves:
+- The sequence information (which nucleotides are present)
+- The position information (where each nucleotide is located)
+- The alignment information (how the seed region aligns with the target site)
+- Gap information (where insertions or deletions occur)
+
+The resulting tensor is then fed into the TargetNet neural network for binding prediction.
+
 ## Mutation Impact Assessment
 
 The final step calculates the difference between wild-type and mutant predictions to assess the impact of mutations:
