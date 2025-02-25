@@ -21,14 +21,14 @@ def validate_ref_nucleotides(df, report_path, verbose=False):
     #   in the interval [pos, pos + ref_len - 1] for the given chromosome (chr)
     df['nuc_at_pos'] = np.where(
         df['ref_len'] > 1,
-        df.apply(lambda x: get_nucleotides_in_interval(
+        df.apply(lambda x: get_seq_interval(
             x['chr'], x['pos'], x["pos"] + x["ref_len"] - 1), axis=1),
         # For rows where the reference length (ref_len) is 1:
         # - Use the get_nucleotide_at_position function to fetch the nucleotide
         #   at the given position (pos) for the given chromosome (chr)
         np.where(
             df['ref_len'] == 1,
-            df.apply(lambda x: get_nucleotide_at_position(
+            df.apply(lambda x: get_nuc_at_pos(
                 x['chr'], x['pos']), axis=1),
             # For all other cases, set the value to an empty string
             ""
@@ -77,14 +77,14 @@ def validate_ref_nucleotides_single(df, report_path, verbose=False):
     df["alt_len"] = df["alt"].str.len()
 
     # Ensure chromosome is loaded
-    from scripts.sequence_utils import CHROMOSOME_SEQUENCE, CHROMOSOME_ID, load_chromosome
+    from scripts.sequence_utils import CHROMOSOME_SEQUENCE, CHROMOSOME_ID, load_chrom
     
     # Get chromosome from first row (assuming single chromosome file)
     chromosome = str(df['chr'].iloc[0])
     
     # Load the chromosome if not already loaded
     if CHROMOSOME_ID != chromosome or CHROMOSOME_SEQUENCE is None:
-        load_chromosome(chromosome)
+        load_chrom(chromosome)
     
     # Define vectorized functions for nucleotide retrieval
     def get_ref_bases(row):
@@ -210,9 +210,9 @@ def add_sequence_columns(df, upstream_offset=29, downstream_offset=10):
     grouped = df.groupby(['chr', 'pos'])
 
     def apply_func(group):
-        group['upstream_seq'] = get_upstream_sequence(
+        group['upstream_seq'] = get_upstream(
             group['chr'].iloc[0], group['pos'].iloc[0], upstream_offset)
-        group['downstream_seq'] = get_downstream_sequence(
+        group['downstream_seq'] = get_downstream(
             group['chr'].iloc[0], group['pos'].iloc[0], group['ref'].iloc[0], downstream_offset)
         group['wt_seq'] = group['upstream_seq'] + \
             group['ref'] + group['downstream_seq']
@@ -238,16 +238,16 @@ def add_sequence_columns_single(df, upstream_offset=29, downstream_offset=10):
     unique_chroms = df['chr'].unique()
     if len(unique_chroms) == 1:
         # Single chromosome optimization - preload it
-        from scripts.sequence_utils import load_chromosome
-        load_chromosome(unique_chroms[0])
+        from scripts.sequence_utils import load_chrom
+        load_chrom(unique_chroms[0])
     
     # Process each unique chr,pos combination
     result_dfs = []
     
     for (chrom, pos), group in df.groupby(['chr', 'pos'], observed=True):
         # Get sequences using optimized function that fetches both at once
-        from scripts.sequence_utils import get_flanking_sequences
-        upstream_seq, downstream_seq = get_flanking_sequences(
+        from scripts.sequence_utils import get_flanks
+        upstream_seq, downstream_seq = get_flanks(
             chrom, pos, group['ref'].iloc[0], 
             upstream_offset=upstream_offset, 
             downstream_offset=downstream_offset

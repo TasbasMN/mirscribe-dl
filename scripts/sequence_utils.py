@@ -8,249 +8,140 @@ if SINGLE_CHROMOSOME:# Global chromosome sequence cache
     CHROMOSOME_ID = None
     CHROMOSOME_METADATA = None
 
-
-
-def load_chromosome(chrom):
-    """
-    Load an entire chromosome into memory for fast access.
-    
-    Parameters:
-    - chrom (str): The name of the chromosome.
-    
-    Returns:
-    - Tuple containing the chromosome sequence and metadata
-    """
+def load_chrom(chr_id):
+    """Load chromosome into memory for fast access."""
     global CHROMOSOME_SEQUENCE, CHROMOSOME_ID, CHROMOSOME_METADATA
     
-    # Already loaded this chromosome
-    if CHROMOSOME_ID == str(chrom) and CHROMOSOME_SEQUENCE is not None:
+    # Skip if already loaded
+    if CHROMOSOME_ID == str(chr_id) and CHROMOSOME_SEQUENCE is not None:
         return
     
-    # Convert chromosome to string
-    chrom = str(chrom)
+    chr_id = str(chr_id)
     
-    # Load the chromosome file
-    file_path = f"{GRCH37_DIR}/Homo_sapiens.GRCh37.dna.chromosome.{chrom}.fa"
-    with open(file_path, 'r') as file:
-        # Read header
+    # Load chromosome file
+    path = f"{GRCH37_DIR}/Homo_sapiens.GRCh37.dna.chromosome.{chr_id}.fa"
+    with open(path, 'r') as file:
         header = file.readline().strip()
-        
-        # Get file position after header
-        header_end_pos = file.tell()
-        
-        # Read a line to determine line length
+        head_pos = file.tell()
         first_line = file.readline().strip()
-        line_length = len(first_line)
-        
-        # Reset to beginning of file
+        line_len = len(first_line)
         file.seek(0)
-        
-        # Read entire file content
         content = file.read()
     
-    # Remove header and all newlines to get continuous sequence
-    sequence_start = content.find('\n') + 1
-    sequence = content[sequence_start:].replace('\n', '')
+    # Extract sequence
+    seq_start = content.find('\n') + 1
+    seq = content[seq_start:].replace('\n', '')
     
-    # Store chromosome and metadata
-    CHROMOSOME_ID = chrom
-    CHROMOSOME_SEQUENCE = sequence
+    # Store data
+    CHROMOSOME_ID = chr_id
+    CHROMOSOME_SEQUENCE = seq
     CHROMOSOME_METADATA = {
         'header': header,
-        'header_end_pos': header_end_pos,
-        'line_length': line_length
+        'header_end_pos': head_pos,
+        'line_length': line_len
     }
     
-    print(f"Loaded chromosome {chrom} with length {len(CHROMOSOME_SEQUENCE)}")
+    print(f"Loaded chromosome {chr_id} with length {len(CHROMOSOME_SEQUENCE)}")
+
 
 
 @lru_cache(maxsize=None)
-def get_nucleotides_in_interval(chrom, start, end):
-    """
-    Given a chromosome name, start and end positions, this function reads the DNA sequence from the corresponding FASTA file and returns the nucleotides in the specified interval.
+def get_seq_interval(chr, start, end):
+    """Get DNA sequence from specified chromosome interval."""
+    chr = str(chr)
 
-    Parameters:
-    - chrom (str): The name of the chromosome.
-    - start (int): The starting position of the interval.
-    - end (int): The ending position of the interval.
-
-    Returns:
-    - nucleotides (str): The nucleotides in the specified interval.
-    """
-
-    # change chrom into str
-    chrom = str(chrom)
-
-    file_path = f"{GRCH37_DIR}/Homo_sapiens.GRCh37.dna.chromosome.{chrom}.fa"
-    with open(file_path, 'r') as file:
+    path = f"{GRCH37_DIR}/Homo_sapiens.GRCh37.dna.chromosome.{chr}.fa"
+    with open(path, 'r') as file:
         file.readline()
-        byte_position = file.tell()
-        line_length = len(file.readline().strip())
+        byte_pos = file.tell()
+        line_len = len(file.readline().strip())
         start_offset = start - 1
         end_offset = end - 1
-        num_start_new_lines = start_offset // line_length
-        num_end_new_lines = end_offset // line_length
-        start_byte_position = byte_position + start_offset + num_start_new_lines
-        end_byte_position = byte_position + end_offset + num_end_new_lines
-        file.seek(start_byte_position)
+        start_nl = start_offset // line_len
+        end_nl = end_offset // line_len
+        start_byte = byte_pos + start_offset + start_nl
+        end_byte = byte_pos + end_offset + end_nl
+        file.seek(start_byte)
+        seq = file.read(end_byte - start_byte + 1)
 
-        # Read the nucleotides in the interval
-        nucleotides = file.read(end_byte_position - start_byte_position + 1)
-
-    # Remove newlines from the nucleotides
-    nucleotides = nucleotides.replace('\n', '')
-
-    return nucleotides
+    return seq.replace('\n', '')
 
 
 
 
-def get_nucleotides_in_interval_single(chrom, start, end):
-    """
-    Given a chromosome name, start and end positions, this function retrieves 
-    nucleotides from the cached chromosome sequence.
-
-    Parameters:
-    - chrom (str): The name of the chromosome.
-    - start (int): The starting position of the interval (1-based).
-    - end (int): The ending position of the interval (1-based).
-
-    Returns:
-    - nucleotides (str): The nucleotides in the specified interval.
-    """
+def get_seq_interval_single(chrom, start, end):
+    """Get nucleotides from cached chromosome sequence."""
     # Ensure chromosome is loaded
     if CHROMOSOME_ID != str(chrom) or CHROMOSOME_SEQUENCE is None:
-        load_chromosome(chrom)
+        load_chrom(chrom)
     
-    # Convert to 0-based indexing
-    start_idx = start - 1
-    end_idx = end
-    
-    # Return the slice of sequence
-    return CHROMOSOME_SEQUENCE[start_idx:end_idx]
+    # Convert to 0-based indexing and return slice
+    return CHROMOSOME_SEQUENCE[start-1:end]
+
 
 
 @lru_cache(maxsize=None)
-def get_nucleotide_at_position(chrom, position):
-    """
-    Given a chromosome name and a position, this function reads the DNA sequence from the corresponding FASTA file and returns the nucleotide at the specified position.
-
-    Parameters:
-    - chrom (str): The name of the chromosome.
-    - position (int): The position of the nucleotide.
-
-    Returns:
-    - nucleotide (str): The nucleotide at the specified position.
-    """
-    file_path = f"{GRCH37_DIR}/Homo_sapiens.GRCh37.dna.chromosome.{chrom}.fa"
-    with open(file_path, 'r') as file:
+def get_nuc_at_pos(chrom, position):
+    """Get nucleotide at specified chromosome position."""
+    path = f"{GRCH37_DIR}/Homo_sapiens.GRCh37.dna.chromosome.{chrom}.fa"
+    with open(path, 'r') as file:
         file.readline()
-        byte_position = file.tell()
-        line_length = len(file.readline().strip())
+        byte_pos = file.tell()
+        line_len = len(file.readline().strip())
         offset = position - 1
-        num_new_lines = offset // line_length
-        byte_position = byte_position + offset + num_new_lines
-        file.seek(byte_position)
+        nl_count = offset // line_len
+        file.seek(byte_pos + offset + nl_count)
+        return file.read(1)
 
-        # Read the nucleotide at the position
-        nucleotide = file.read(1)
-    return nucleotide
 
-def get_nucleotide_at_position_single(chrom, position):
-    """
-    Given a chromosome name and a position, this function retrieves the nucleotide
-    from the cached chromosome sequence.
-
-    Parameters:
-    - chrom (str): The name of the chromosome.
-    - position (int): The position of the nucleotide (1-based).
-
-    Returns:
-    - nucleotide (str): The nucleotide at the specified position.
-    """
+def get_nuc_at_pos_single(chrom, position):
+    """Get nucleotide from cached chromosome sequence."""
     # Ensure chromosome is loaded
     if CHROMOSOME_ID != str(chrom) or CHROMOSOME_SEQUENCE is None:
-        load_chromosome(chrom)
+        load_chrom(chrom)
     
-    # Convert to 0-based indexing
-    idx = position - 1
-    
-    # Return the nucleotide
-    return CHROMOSOME_SEQUENCE[idx]
+    # Return nucleotide (convert from 1-based to 0-based)
+    return CHROMOSOME_SEQUENCE[position-1]
+
 
 @lru_cache(maxsize=None)
-def get_upstream_sequence(chrom, pos, n=30):
-    """
-    Get the upstream sequence of length n from the given position.
-
-    Args:
-        chrom (str): The chromosome name.
-        pos (int): The position.
-        n (int, optional): The length of the upstream sequence. Defaults to 30.
-
-    Returns:
-        str: The upstream sequence.
-    """
-    int_pos = int(pos)
-    upstream_start = max(1, int_pos - n)
-    upstream_end = int_pos - 1
-    return get_nucleotides_in_interval(chrom, upstream_start, upstream_end)
+def get_upstream(chrom, pos, n=30):
+    """Get upstream sequence of length n."""
+    pos = int(pos)
+    start = max(1, pos - n)
+    end = pos - 1
+    return get_seq_interval(chrom, start, end)
 
 @lru_cache(maxsize=None)
-def get_downstream_sequence(chrom, pos, ref, n=30):
-    """
-    Get the downstream sequence of length n from the given position.
+def get_downstream(chrom, pos, ref, n=30):
+    """Get downstream sequence of length n."""
+    pos = int(pos)
+    start = pos + len(ref)
+    end = start + n - 1
+    return get_seq_interval(chrom, start, end)
 
-    Args:
-        chrom (str): The chromosome name.
-        pos (int): The position.
-        ref (str): The reference allele.
-        n (int, optional): The length of the downstream sequence. Defaults to 30.
 
-    Returns:
-        str: The downstream sequence.
-    """
-    int_pos = int(pos)
-    ref_len = len(ref)
-    downstream_start = int_pos + ref_len
-    downstream_end = downstream_start + n - 1
-    return get_nucleotides_in_interval(chrom, downstream_start, downstream_end)
 
-def get_flanking_sequences(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
-    """
-    Get both upstream and downstream sequences in a single function call.
-    This is more efficient than calling get_upstream_sequence and get_downstream_sequence separately.
-    
-    Args:
-        chrom (str): The chromosome name.
-        pos (int): The position.
-        ref (str): The reference allele.
-        upstream_offset (int): Length of upstream sequence. Defaults to 30.
-        downstream_offset (int): Length of downstream sequence. Defaults to 30.
-        
-    Returns:
-        tuple: (upstream_seq, downstream_seq)
-    """
+def get_flanks(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
+    """Get both upstream and downstream sequences efficiently."""
     # Ensure chromosome is loaded
     if CHROMOSOME_ID != str(chrom) or CHROMOSOME_SEQUENCE is None:
-        load_chromosome(chrom)
+        load_chrom(chrom)
         
-    int_pos = int(pos)
-    ref_len = len(ref)
+    pos = int(pos)
     
-    # Calculate upstream region
-    upstream_start = max(1, int_pos - upstream_offset)
-    upstream_end = int_pos - 1
+    # Calculate regions
+    up_start = max(1, pos - upstream_offset)
+    up_end = pos - 1
     
-    # Calculate downstream region
-    downstream_start = int_pos + ref_len
-    downstream_end = downstream_start + downstream_offset - 1
+    down_start = pos + len(ref)
+    down_end = down_start + downstream_offset - 1
     
-    # Get sequences directly from chromosome cache
-    upstream_seq = CHROMOSOME_SEQUENCE[upstream_start-1:upstream_end]
-    downstream_seq = CHROMOSOME_SEQUENCE[downstream_start-1:downstream_end]
+    # Get sequences from chromosome cache
+    up_seq = CHROMOSOME_SEQUENCE[up_start-1:up_end]
+    down_seq = CHROMOSOME_SEQUENCE[down_start-1:down_end]
     
-    return upstream_seq, downstream_seq
+    return up_seq, down_seq
 
 
 @lru_cache(maxsize=None)

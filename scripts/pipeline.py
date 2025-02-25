@@ -60,8 +60,8 @@ def analysis_pipeline_single(df, start_idx, end_idx, out_dir, vcf_id):
     # Preload chromosome if single chromosome data
     unique_chroms = df['chr'].unique()
     if len(unique_chroms) == 1:
-        from scripts.sequence_utils import load_chromosome
-        load_chromosome(unique_chroms[0])
+        from scripts.sequence_utils import load_chrom
+        load_chrom(unique_chroms[0])
         print(f"Pre-loaded chromosome {unique_chroms[0]} for faster access")
 
     df = generate_is_mirna_column_single(df, grch=37)
