@@ -56,8 +56,7 @@ def parse_arguments():
                         default=0.2, 
                         type=float,
                         help='Threshold for filtering out pairs')
-    parser.add_argument('-b', '--batch_size', default=64, type=int,
-                        help='Batch size for neural network predictions')
+
 
     return parser.parse_args()
 
