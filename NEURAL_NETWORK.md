@@ -120,13 +120,13 @@ This creates a 40-nucleotide sequence (for a single-nucleotide variant) with the
 Example:
 ```
 Chromosome sequence: ...xxxxxxxxxxxxxxxxxxxxxxxxxxxxx  G  xxxxxxxxxx...
-                                               ^ mutation site (G→C)
+                                                       ^ mutation site (G→C)
 
 Extracted wild-type: xxxxxxxxxxxxxxxxxxxxxxxxxxxxx  G  xxxxxxxxxx (40 nt)
-                                       ^ mutation at position 30
+                                                    ^ mutation at position 30
 
 Extracted mutant:    xxxxxxxxxxxxxxxxxxxxxxxxxxxxx  C  xxxxxxxxxx (40 nt)
-                                       ^ mutation at position 30 (G→C)
+                                                    ^ mutation at position 30 (G→C)
 ```
 
 ### 2. Sequence Preparation and Reversal
@@ -148,16 +148,16 @@ After reversal, the mutation position shifts from position 30 to position 10 (co
 Example:
 ```
 Original WT:  xxxxxxxxxxxxxxxxxxxxxxxxxxxxx  G  xxxxxxxxxx
-                                     ^ mutation at position 30
+                                             ^ mutation at position 30
 
 Original MUT: xxxxxxxxxxxxxxxxxxxxxxxxxxxxx  G  xxxxxxxxxx
-                                     ^ mutation at position 30 (G→C)
+                                             ^ mutation at position 30 (G→C)
 
 Reversed WT:  xxxxxxxxxx  G  xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                        ^ mutation now at position 10
+                          ^ mutation now at position 10
                         
 Reversed MUT: xxxxxxxxxx  C  xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                        ^ mutation now at position 10 (G→C)
+                          ^ mutation now at position 10 (G→C)
 ```
 
 This positioning is crucial because in the next step, we align the miRNA seed region with a specific section of this reversed sequence that includes the mutation site.
@@ -218,9 +218,9 @@ G | 0  0  0  0  0  0  1  0  0 ...  0  ← miRNA G nucleotides
 U | 0  0  0  0  0  0  0  0  0 ...  0  ← miRNA U nucleotides
 - | 0  0  0  0  0  0  0  0  1 ...  0  ← miRNA gap positions
 A | 0  0  0  0  0  0  0  0  0 ...  0  ← mRNA A nucleotides
-C | 0  0  0  0  1  0  0  0  0 ...  0  ← mRNA C nucleotides
+C | 0  0  0  0  0  0  0  0  0 ...  0  ← mRNA C nucleotides
 G | 0  0  0  0  0  0  0  0  0 ...  0  ← mRNA G nucleotides
-U | 1  0  0  0  0  0  0  0  0 ...  0  ← mRNA U nucleotides
+U | 0  0  0  0  0  0  0  0  0 ...  0  ← mRNA U nucleotides
 - | 0  0  0  0  0  0  0  1  0 ...  0  ← mRNA gap positions
 ```
 
