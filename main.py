@@ -28,19 +28,19 @@ def main():
 if __name__ == '__main__':
     with contextlib.suppress(RuntimeError):
         multiprocessing.set_start_method('spawn')
-    
+
     try:
         lines = int(subprocess.run(['wc', '-l', VCF_FULL_PATH], 
                    capture_output=True, text=True).stdout.split()[0])
         print(f"VCF: {lines} lines")
-    except:
+    except Exception:
         lines = 0
         print("VCF: line count failed")
 
     start = time.time()
     main()
     elapsed = time.time() - start
-    
+
     print(f"Time: {elapsed:.2f}s")
     if lines:
         spl = elapsed / lines
