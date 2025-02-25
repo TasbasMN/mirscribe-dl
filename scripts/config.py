@@ -1,59 +1,85 @@
 import argparse
 import os
+import torch
 from torch import device, cuda
-from scripts.targetnet import *
-
-
+from scripts.targetnet import TargetNet
 
 def parse_arguments():
+    """Parse command line arguments for VCF processing pipeline"""
     parser = argparse.ArgumentParser(
         description='Process a VCF file in chunks using concurrent futures.')
     
-    # Changed to optional argument with -f/--file
+    # File input settings
     parser.add_argument('-f', '--file_path', 
                         type=str,
                         default="input/sample/sample.vcf",
                         required=False,
                         help='Path to the VCF file')
     
-    # Rest of your arguments
-    parser.add_argument("-c", '--chunksize', default=200,
-                        type=int, help='Number of lines to process per chunk')
-    parser.add_argument("-o", '--output_dir', type=str,
-                        default='./results', help='Path to the output directory')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Enable verbose logging')
-    parser.add_argument('-w', '--workers', default=os.cpu_count(),
-                        type=int, help='Number of concurrent workers')
-    parser.add_argument('--skip-rnaduplex', action='store_true',
-                        help='Skip RNAduplex analysis')
-    parser.add_argument('-t', '--threshold', default=0.2, type=float,
-                        help='Threshold for filtering out pairs')
-    parser.add_argument('-b', '--batch_size', default=64, type=int,
+    # Processing settings
+    parser.add_argument("-c", '--chunksize', 
+                        default=200,
+                        type=int, 
+                        help='Number of lines to process per chunk')
+    parser.add_argument("-b", '--batch_size', 
+                        default=64, 
+                        type=int,
                         help='Batch size for neural network predictions')
-
+    parser.add_argument('-w', '--workers', 
+                        default=os.cpu_count(),
+                        type=int, 
+                        help='Number of concurrent workers')
+    
+    # Output settings
+    parser.add_argument("-o", '--output_dir', 
+                        type=str,
+                        default='./results', 
+                        help='Path to the output directory')
+    parser.add_argument('-v', '--verbose', 
+                        action='store_true',
+                        help='Enable verbose logging')
+    
+    # Analysis settings
+    parser.add_argument('--skip-rnaduplex', 
+                        action='store_true',
+                        help='Skip RNAduplex analysis')
+    parser.add_argument('-t', '--threshold', 
+                        default=0.2, 
+                        type=float,
+                        help='Threshold for filtering out pairs')
 
     return parser.parse_args()
 
-
-
+# Parse arguments and initialize global variables
 args = parse_arguments()
 
+# Input settings
 VCF_FULL_PATH = args.file_path
+VCF_COLNAMES = ["chr", "pos", "id", "ref", "alt"]
+VCF_ID = os.path.basename(VCF_FULL_PATH).split(".")[0]
+
+# Processing settings
 CHUNKSIZE = args.chunksize
-VERBOSE = args.verbose
 WORKERS = args.workers
+BATCH_SIZE = args.batch_size
+VERBOSE = args.verbose
 SKIP_RNADUPLEX = args.skip_rnaduplex
 FILTER_THRESHOLD = args.threshold
-BATCH_SIZE = args.batch_size
 
-
-VCF_COLNAMES = ["chr", "pos", "id", "ref", "alt"]
-
-VCF_ID = os.path.basename(VCF_FULL_PATH).split(".")[0]
+# Output settings
 OUTPUT_DIR = os.path.join(args.output_dir, f"{VCF_ID}_{CHUNKSIZE}")
 
+# Path settings
+GRCH37_DIR = "data/fasta/grch37"
+MIRNA_COORDS_DIR = "data/mirna_coordinates"
+MIRNA_CSV = "data/mirna/mirna.csv"
 
+# Sequence analysis settings
+UPSTREAM_OFFSET = 29
+DOWNSTREAM_OFFSET = 10
+DECISION_SURFACE = 0.5
+
+# Model configuration
 class ModelConfig:
     def __init__(self):
         self.skip_connection = True
@@ -63,18 +89,17 @@ class ModelConfig:
         self.block_kernel_size = 3
         self.pool_size = 3
 
-
-
+# Initialize model
 DEVICE = device("cuda" if cuda.is_available() else "cpu")
 MODEL_PATH = "models/TargetNet.pt"
 model_cfg = ModelConfig()
 
-# For ESA mode
+# Load model in ESA mode
 model = TargetNet(model_cfg, with_esa=True, dropout_rate=0.5)
 MODEL = model.to(DEVICE)
 MODEL.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
 
-
+# RNA pairing score matrix
 SCORE_MATRIX = {}
 for c1 in 'ACGU':
     for c2 in 'ACGU':
@@ -84,14 +109,3 @@ for c1 in 'ACGU':
             SCORE_MATRIX[(c1, c2)] = 1
         else:
             SCORE_MATRIX[(c1, c2)] = 0
-            
-
-DECISION_SURFACE = 0.5
-
-
-GRCH37_DIR = "data/fasta/grch37"
-MIRNA_COORDS_DIR = "data/mirna_coordinates"
-MIRNA_CSV = "data/mirna/mirna.csv"
-
-UPSTREAM_OFFSET = 29
-DOWNSTREAM_OFFSET = 10
