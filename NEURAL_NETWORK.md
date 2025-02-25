@@ -2,20 +2,7 @@
 
 This document describes the neural network architecture used in MirScribe-DL for predicting miRNA-mRNA binding interactions, as well as the data preprocessing and transformation pipeline.
 
-## TargetNet Architecture
-
-TargetNet is a ResNet-style convolutional neural network designed specifically for miRNA-target prediction:
-
-```
-TargetNet
-├── Stem Layer: Conv1D layers with kernel size 5
-├── Stage 1: ResNet blocks with kernel size 3
-├── Stage 2: ResNet blocks with kernel size 3
-├── Global Max Pooling
-└── Fully Connected Layer
-```
-
-### Understanding ResNet Architecture
+## ResNet Architecture Background
 
 ResNet (Residual Network) is a pioneering neural network architecture that introduced "skip connections" or "shortcuts" to solve the vanishing gradient problem in deep networks:
 
@@ -36,7 +23,20 @@ ResNet (Residual Network) is a pioneering neural network architecture that intro
    - Provides faster convergence during training
    - Often results in better performance with fewer parameters
 
-In TargetNet, we utilize a 1D variant of ResNet optimized for sequence data, where the skip connections help maintain important positional and sequential information throughout the network.
+## TargetNet Architecture
+
+TargetNet is our custom 1D ResNet-based convolutional neural network designed specifically for miRNA-target prediction. It utilizes residual connections optimized for RNA sequence data, where the skip connections help maintain important positional and sequential information throughout the network.
+
+### Network Structure
+
+```
+TargetNet
+├── Stem Layer: Conv1D layers with kernel size 5
+├── Stage 1: ResNet blocks with kernel size 3
+├── Stage 2: ResNet blocks with kernel size 3
+├── Global Max Pooling
+└── Fully Connected Layer
+```
 
 ### Network Configuration
 
@@ -49,9 +49,9 @@ In TargetNet, we utilize a 1D variant of ResNet optimized for sequence data, whe
 - **Dropout Rate**: 0.5
 - **Skip Connections**: Yes
 
-### ResNet Block Structure
+### ResNet Block Implementation
 
-Each ResNet block follows this structure:
+Each ResNet block in TargetNet follows this specific structure:
 1. ReLU activation
 2. Dropout (0.5)
 3. Convolution
