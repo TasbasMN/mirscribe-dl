@@ -8,6 +8,7 @@
 - Specify GPU devices: `python main.py -f input/path/to/file.vcf --gpu-devices 0,1,2`
 - Run on cluster with 54 cores: `python main.py -f input/path/to/file.vcf -w 54 -b 128`
 - Run Jupyter notebooks: `jupyter notebook aligner.ipynb`
+- Process single chromosome: `python main.py -f input/vcfs/by_chr/chrY_1.vcf -s -c 200 -b 64 -w 8`
 
 ## Code Style Guidelines
 - **Imports**: Standard library first, third-party second (pandas, numpy, torch, Bio), local imports last
@@ -31,9 +32,29 @@
 - **Optimized File I/O**: Single file read for chromosome data instead of repeated lookups
 - **DataFrame Optimization**: Use categorical data types and memory-efficient data structures
 - **Process Isolation**: Uses 'spawn' method for proper process isolation with CUDA
+- **Single Chromosome Mode**: Use `-s`/`--single-chromosome` flag to optimize when processing a VCF with variants from only one chromosome
 
 ## Project Structure
 - `main.py`: Entry point with argparse
 - `scripts/`: Core functionality modules (config, functions, pipeline, targetnet)
+  - `config.py`: Command-line argument parsing and global configuration
+  - `pipeline.py`: Worker initialization, chunked file processing, and result compilation
+  - `functions.py`: Analysis functions, sequence preparation, neural network prediction
+  - `sequence_utils.py`: Chromosome sequence loading and manipulation with caching
+  - `targetnet.py`: Neural network model for miRNA-target prediction (ResNet architecture)
 - `data/`: Reference data (miRNA, fasta files)
-- `models/`: Pre-trained model weights
+  - `fasta/grch37/`: Reference genome chromosome sequences
+  - `mirna/mirna.csv`: miRNA sequence data
+  - `mirna_coordinates/grch37_coordinates.csv`: Genomic positions of miRNAs
+- `models/`: Pre-trained model weights (TargetNet.pt)
+- `input/`: VCF files containing genetic variants for analysis
+- `results/`: Output directory for prediction results
+
+## Processing Flow
+1. VCF file is processed in chunks for memory efficiency
+2. For each mutation:
+   - Reference/wildtype and mutant sequences are extracted
+   - Sequences are validated against reference genome
+   - Mutations are classified (miRNA region or not)
+3. Neural network predicts binding for all miRNA-sequence pairs
+4. Results show predicted binding difference between wildtype and mutant
