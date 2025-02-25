@@ -132,9 +132,7 @@ def run_pipeline_single(vcf_path, chunksize, out_dir, vcf_id):
         for chunk in pd.read_csv(vcf_path, chunksize=chunksize, sep="\t", header=None, names=VCF_COLNAMES):
             end_idx = start_idx + len(chunk) - 1
             job = executor.submit(
-                process_chunk, chunk, start_idx, end_idx, out_dir, vcf_id,
-                S_MATRIX, DEC_SURF, FILTER_THRESH, BATCH_SIZE
-            )
+                process_chunk, chunk, start_idx, end_idx, out_dir, vcf_id)
             jobs.append(job)
             start_idx = end_idx + 1
         
@@ -163,9 +161,7 @@ def run_pipeline(vcf_path, chunksize, out_dir, vcf_id):
         for chunk in pd.read_csv(vcf_path, chunksize=chunksize, sep="\t", header=None, names=VCF_COLNAMES):
             end_idx = start_idx + len(chunk) - 1
             job = executor.submit(
-                process_chunk, chunk, start_idx, end_idx, out_dir, vcf_id,
-                S_MATRIX, DEC_SURF, FILTER_THRESH, BATCH_SIZE
-            )
+                process_chunk, chunk, start_idx, end_idx, out_dir, vcf_id)
             jobs.append(job)
             start_idx = end_idx + 1
         

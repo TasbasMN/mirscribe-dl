@@ -142,5 +142,3 @@ def get_flanks(chrom, pos, ref, upstream_offset=30, downstream_offset=30):
     down_seq = CHROMOSOME_SEQUENCE[down_start-1:down_end]
     
     return up_seq, down_seq
-
-

@@ -1,7 +1,6 @@
 import numpy as np
 from Bio import pairwise2
 import torch
-
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -25,18 +24,28 @@ def extended_seed_alignment(mi_seq, cts_r_seq, score_matrix):
     esa_score = alignment[2]
     return mi_esa, cts_r_esa, esa_score
 
+
+
 def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa, with_esa):
     """ one-hot encoder for RNA sequences with/without extended seed alignments """
-    chars = {"A":0, "C":1, "G":2, "U":3}
+    chars = {"A": 0, "C": 1, "G": 2, "U": 3}
+    
     if not with_esa:
-        x = np.zeros((len(chars) * 2, 40), dtype=np.float32)
+        x = np.zeros((8, 40), dtype=np.float32)
+        
+        # Handle mirna_seq with pre-computed indices
         for i in range(len(mirna_seq)):
             x[chars[mirna_seq[i]], 5 + i] = 1
+            
+        # Handle cts_rev_seq with pre-computed indices
+        offset = len(chars)
         for i in range(len(cts_rev_seq)):
-            x[chars[cts_rev_seq[i]] + len(chars), i] = 1
+            x[chars[cts_rev_seq[i]] + offset, i] = 1
     else:
         chars["-"] = 4
-        x = np.zeros((len(chars) * 2, 50), dtype=np.float32)
+        x = np.zeros((10, 50), dtype=np.float32)
+        
+        # Follow the original pattern but with optimized lookups
         for i in range(len(mirna_esa)):
             x[chars[mirna_esa[i]], 5 + i] = 1
         for i in range(10, len(mirna_seq)):
@@ -47,54 +56,35 @@ def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa, with_esa):
             x[chars[cts_rev_esa[i]] + len(chars), i + 5] = 1
         for i in range(15, len(cts_rev_seq)):
             x[chars[cts_rev_seq[i]] + len(chars), i + 5 - 15 + len(cts_rev_esa)] = 1
+    
     return x
-
 def predict_single_pair(model, mirna_seq, mrna_seq, with_esa=True, device="cpu"):
-    """
-    Predict interaction for a single miRNA-mRNA pair
-    
-    Args:
-        model: loaded TargetNet model
-        mirna_seq: miRNA sequence (string)
-        mrna_seq: target sequence (string) - must be 40nt
-        with_esa: whether to use extended seed alignment (must match model init)
-        device: torch device to use
-    
-    Returns:
-        dict containing:
-        - prob: binding probability (0-1)
-        - binding_site: nucleotides at positions 5-15 where binding is checked
-        - alignment_score: ESA score (only if with_esa=True)
-    """
+    """Predict interaction for a single miRNA-mRNA pair"""
     # Verify input length
     assert len(mrna_seq) == 40, "mRNA sequence must be exactly 40nt long"
     
     # Prepare sequences
     mirna_seq = mirna_seq.upper().replace("T", "U")
     mrna_seq = mrna_seq.upper().replace("T", "U")
-    mrna_rev_seq = reverse(mrna_seq)
+    mrna_rev = reverse(mrna_seq)
     
     if with_esa:
         # Get ESA alignment
-        mirna_esa, mrna_rev_esa, esa_score = extended_seed_alignment(mirna_seq, mrna_rev_seq)
+        mirna_esa, mrna_rev_esa, esa_score = extended_seed_alignment(mirna_seq, mrna_rev)
     else:
         # Dummy values for non-ESA mode
         mirna_esa, mrna_rev_esa, esa_score = None, None, None
     
-    # Create feature matrix
-    x = encode_RNA(mirna_seq, mirna_esa, mrna_rev_seq, mrna_rev_esa, with_esa=with_esa)
-    
-    # Convert to torch tensor and add batch dimension
+    # Create feature matrix and predict
+    x = encode_RNA(mirna_seq, mirna_esa, mrna_rev, mrna_rev_esa, with_esa=with_esa)
     x = torch.from_numpy(x).unsqueeze(0).to(device)
     
-    # Set model to eval mode and get prediction
     model.eval()
     with torch.no_grad():
-        pred = model(x)
-        prob = torch.sigmoid(pred)
+        prob = torch.sigmoid(model(x)).item()
     
     result = {
-        'prob': prob.item(),
+        'prob': prob,
         'binding_site': mrna_seq[5:15]
     }
     
@@ -102,6 +92,7 @@ def predict_single_pair(model, mirna_seq, mrna_seq, with_esa=True, device="cpu")
         result['alignment_score'] = esa_score
         
     return result
+
 
 
 
