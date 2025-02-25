@@ -43,8 +43,8 @@ def main():
 
     results_filename = f"results_{VCF_ID}.csv"
     
-    # stitch_and_cleanup_csv_files(OUTPUT_DIR, results_filename)
-    # print("stitch_and_cleanup   ✓")
+    stitch_and_cleanup_csv_files(OUTPUT_DIR, results_filename)
+    print("stitch_and_cleanup   ✓")
     
     # delete_fasta_files(OUTPUT_DIR)
     # print("delete_fasta_files   ✓")

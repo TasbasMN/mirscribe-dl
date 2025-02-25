@@ -360,3 +360,51 @@ def run_pipeline(vcf_full_path, chunksize, output_dir, vcf_id):
                 print(f"Completed chunk {start_index}-{end_index}")
             except Exception as e:
                 print(f"Error processing chunk: {e}")
+
+
+def stitch_and_cleanup_csv_files(output_dir: str, final_output_filename: str) -> None:
+    """
+    Stitch multiple result CSV files into one and remove the original files.
+    
+    Args:
+        output_dir (str): Directory containing the CSV files.
+        final_output_filename (str): Name of the final stitched file.
+    """
+    try:
+        # Get and filter CSV files
+        csv_files = [f for f in os.listdir(output_dir) 
+                     if f.endswith('.csv') and f.startswith('result_')]
+        csv_files.sort()  # Ensure consistent ordering
+        
+        if not csv_files:
+            print("No matching CSV files found.")
+            return
+
+        final_output_path = os.path.join(output_dir, final_output_filename)
+        removed_files: List[str] = []
+
+        with open(final_output_path, 'w', newline='') as outfile:
+            writer = csv.writer(outfile)
+            header_written = False
+
+            for filename in csv_files:
+                file_path = os.path.join(output_dir, filename)
+                with open(file_path, 'r', newline='') as infile:
+                    reader = csv.reader(infile)
+                    if not header_written:
+                        header = next(reader)
+                        writer.writerow(header)
+                        header_written = True
+                    else:
+                        next(reader)  # Skip header in subsequent files
+                    writer.writerows(reader)
+                
+                # Add file removal here
+                os.remove(file_path)
+                removed_files.append(filename)
+        
+        print(f"Stitched {len(removed_files)} files into {final_output_filename}")
+        print(f"Removed original files: {', '.join(removed_files)}")
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
