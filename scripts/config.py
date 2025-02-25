@@ -136,7 +136,7 @@ if DEVICE.type == "cuda":
     MODEL = None
 else:
     # For CPU mode, initialize model in main process
-    model = TargetNet(model_cfg, with_esa=True, dropout_rate=0.5)
+    model = TargetNet(model_cfg, dropout_rate=0.5)
     MODEL = model.to(DEVICE)
     MODEL.load_state_dict(torch.load(MODEL_PATH, weights_only=True, map_location=DEVICE))
 

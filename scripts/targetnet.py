@@ -26,39 +26,27 @@ def extended_seed_alignment(mi_seq, cts_r_seq, score_matrix):
 
 
 
-def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa, with_esa):
-    """ one-hot encoder for RNA sequences with/without extended seed alignments """
-    chars = {"A": 0, "C": 1, "G": 2, "U": 3}
+def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa):
+    """ one-hot encoder for RNA sequences with extended seed alignments """
+    chars = {"A": 0, "C": 1, "G": 2, "U": 3, "-": 4}
+    x = np.zeros((10, 50), dtype=np.float32)
     
-    if not with_esa:
-        x = np.zeros((8, 40), dtype=np.float32)
-        
-        # Handle mirna_seq with pre-computed indices
-        for i in range(len(mirna_seq)):
-            x[chars[mirna_seq[i]], 5 + i] = 1
-            
-        # Handle cts_rev_seq with pre-computed indices
-        offset = len(chars)
-        for i in range(len(cts_rev_seq)):
-            x[chars[cts_rev_seq[i]] + offset, i] = 1
-    else:
-        chars["-"] = 4
-        x = np.zeros((10, 50), dtype=np.float32)
-        
-        # Follow the original pattern but with optimized lookups
-        for i in range(len(mirna_esa)):
-            x[chars[mirna_esa[i]], 5 + i] = 1
-        for i in range(10, len(mirna_seq)):
-            x[chars[mirna_seq[i]], 5 + i - 10 + len(mirna_esa)] = 1
-        for i in range(5):
-            x[chars[cts_rev_seq[i]] + len(chars), i] = 1
-        for i in range(len(cts_rev_esa)):
-            x[chars[cts_rev_esa[i]] + len(chars), i + 5] = 1
-        for i in range(15, len(cts_rev_seq)):
-            x[chars[cts_rev_seq[i]] + len(chars), i + 5 - 15 + len(cts_rev_esa)] = 1
+    # Encode miRNA with ESA
+    for i in range(len(mirna_esa)):
+        x[chars[mirna_esa[i]], 5 + i] = 1
+    for i in range(10, len(mirna_seq)):
+        x[chars[mirna_seq[i]], 5 + i - 10 + len(mirna_esa)] = 1
+    
+    # Encode mRNA with ESA
+    for i in range(5):
+        x[chars[cts_rev_seq[i]] + 5, i] = 1
+    for i in range(len(cts_rev_esa)):
+        x[chars[cts_rev_esa[i]] + 5, i + 5] = 1
+    for i in range(15, len(cts_rev_seq)):
+        x[chars[cts_rev_seq[i]] + 5, i + 5 - 15 + len(cts_rev_esa)] = 1
     
     return x
-def predict_single_pair(model, mirna_seq, mrna_seq, with_esa=True, device="cpu"):
+def predict_single_pair(model, mirna_seq, mrna_seq, device="cpu"):
     """Predict interaction for a single miRNA-mRNA pair"""
     # Verify input length
     assert len(mrna_seq) == 40, "mRNA sequence must be exactly 40nt long"
@@ -66,17 +54,13 @@ def predict_single_pair(model, mirna_seq, mrna_seq, with_esa=True, device="cpu")
     # Prepare sequences
     mirna_seq = mirna_seq.upper().replace("T", "U")
     mrna_seq = mrna_seq.upper().replace("T", "U")
-    mrna_rev = reverse(mrna_seq)
+    mrna_rev = mrna_seq[::-1]  # Reverse the sequence
     
-    if with_esa:
-        # Get ESA alignment
-        mirna_esa, mrna_rev_esa, esa_score = extended_seed_alignment(mirna_seq, mrna_rev)
-    else:
-        # Dummy values for non-ESA mode
-        mirna_esa, mrna_rev_esa, esa_score = None, None, None
+    # Get ESA alignment
+    mirna_esa, mrna_rev_esa, esa_score = extended_seed_alignment(mirna_seq, mrna_rev)
     
     # Create feature matrix and predict
-    x = encode_RNA(mirna_seq, mirna_esa, mrna_rev, mrna_rev_esa, with_esa=with_esa)
+    x = encode_RNA(mirna_seq, mirna_esa, mrna_rev, mrna_rev_esa)
     x = torch.from_numpy(x).unsqueeze(0).to(device)
     
     model.eval()
@@ -85,11 +69,9 @@ def predict_single_pair(model, mirna_seq, mrna_seq, with_esa=True, device="cpu")
     
     result = {
         'prob': prob,
-        'binding_site': mrna_seq[5:15]
+        'binding_site': mrna_seq[5:15],
+        'alignment_score': esa_score
     }
-    
-    if with_esa:
-        result['alignment_score'] = esa_score
         
     return result
 
@@ -99,13 +81,13 @@ def predict_single_pair(model, mirna_seq, mrna_seq, with_esa=True, device="cpu")
 
 class TargetNet(nn.Module):
     """ TargetNet for microRNA target prediction """
-    def __init__(self, model_cfg, with_esa, dropout_rate):
+    def __init__(self, model_cfg, with_esa=True, dropout_rate=0.5):
         super(TargetNet, self).__init__()
         num_channels = model_cfg.num_channels
         num_blocks = model_cfg.num_blocks
 
-        if not with_esa: self.in_channels, in_length = 8, 40
-        else:            self.in_channels, in_length = 10, 50
+        # Always use ESA mode with 10 channels and 50 length
+        self.in_channels, in_length = 10, 50
         out_length = np.floor(((in_length - model_cfg.pool_size) / model_cfg.pool_size) + 1)
 
         self.stem = self._make_layer(model_cfg, num_channels[0], num_blocks[0], dropout_rate, stem=True)

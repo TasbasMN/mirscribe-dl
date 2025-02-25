@@ -341,28 +341,25 @@ def extended_seed_alignment(mi_seq, cts_r_seq, score_matrix):
     return mi_esa, cts_r_esa, esa_score
 
 
-def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa, with_esa):
-    """ one-hot encoder for RNA sequences with/without extended seed alignments """
-    chars = {"A":0, "C":1, "G":2, "U":3}
-    if not with_esa:
-        x = np.zeros((len(chars) * 2, 40), dtype=np.float32)
-        for i in range(len(mirna_seq)):
-            x[chars[mirna_seq[i]], 5 + i] = 1
-        for i in range(len(cts_rev_seq)):
-            x[chars[cts_rev_seq[i]] + len(chars), i] = 1
-    else:
-        chars["-"] = 4
-        x = np.zeros((len(chars) * 2, 50), dtype=np.float32)
-        for i in range(len(mirna_esa)):
-            x[chars[mirna_esa[i]], 5 + i] = 1
-        for i in range(10, len(mirna_seq)):
-            x[chars[mirna_seq[i]], 5 + i - 10 + len(mirna_esa)] = 1
-        for i in range(5):
-            x[chars[cts_rev_seq[i]] + len(chars), i] = 1
-        for i in range(len(cts_rev_esa)):
-            x[chars[cts_rev_esa[i]] + len(chars), i + 5] = 1
-        for i in range(15, len(cts_rev_seq)):
-            x[chars[cts_rev_seq[i]] + len(chars), i + 5 - 15 + len(cts_rev_esa)] = 1
+def encode_RNA(mirna_seq, mirna_esa, cts_rev_seq, cts_rev_esa):
+    """ one-hot encoder for RNA sequences with extended seed alignments """
+    chars = {"A":0, "C":1, "G":2, "U":3, "-":4}
+    x = np.zeros((len(chars) * 2, 50), dtype=np.float32)
+    
+    # Encode miRNA with ESA
+    for i in range(len(mirna_esa)):
+        x[chars[mirna_esa[i]], 5 + i] = 1
+    for i in range(10, len(mirna_seq)):
+        x[chars[mirna_seq[i]], 5 + i - 10 + len(mirna_esa)] = 1
+    
+    # Encode mRNA with ESA
+    for i in range(5):
+        x[chars[cts_rev_seq[i]] + len(chars), i] = 1
+    for i in range(len(cts_rev_esa)):
+        x[chars[cts_rev_esa[i]] + len(chars), i + 5] = 1
+    for i in range(15, len(cts_rev_seq)):
+        x[chars[cts_rev_seq[i]] + len(chars), i + 5 - 15 + len(cts_rev_esa)] = 1
+    
     return x
 
 
@@ -382,7 +379,7 @@ def prepare_sequence_for_model(mrna_seq, mirna_seq, score_matrix):
     mirna_esa, mrna_rev_esa, _ = extended_seed_alignment(mirna_seq, mrna_rev_seq, score_matrix)
     
     # Encode
-    x = encode_RNA(mirna_seq, mirna_esa, mrna_rev_seq, mrna_rev_esa, with_esa=True)
+    x = encode_RNA(mirna_seq, mirna_esa, mrna_rev_seq, mrna_rev_esa)
     return torch.from_numpy(x).unsqueeze(0)
 
 def get_model_predictions_batch(model: nn.Module, sequence_tensors: torch.Tensor, device: str) -> torch.Tensor:
@@ -424,7 +421,7 @@ def process_sequence_pairs(model, sequence_generator, device, score_matrix, batc
         
         # Alignment and encoding
         mirna_esa, mrna_rev_esa, _ = extended_seed_alignment(processed_mirna, processed_mrna, score_matrix)
-        x = encode_RNA(processed_mirna, mirna_esa, processed_mrna, mrna_rev_esa, with_esa=True)
+        x = encode_RNA(processed_mirna, mirna_esa, processed_mrna, mrna_rev_esa)
         tensor = torch.from_numpy(x).unsqueeze(0)
         
         batch_ids.append(combined_id)

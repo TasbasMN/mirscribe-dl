@@ -17,7 +17,7 @@ def init_worker(model_path, device_str, cfg):
     device = torch.device(device_str)
     
     # Create model and move to device
-    MODEL = TargetNet(cfg, with_esa=True, dropout_rate=0.5).to(device)
+    MODEL = TargetNet(cfg, dropout_rate=0.5).to(device)
     
     # Load weights and set to eval mode
     MODEL.load_state_dict(torch.load(model_path, weights_only=True, map_location=device))
