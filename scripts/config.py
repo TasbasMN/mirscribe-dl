@@ -56,6 +56,8 @@ def parse_arguments():
                         default=0.2, 
                         type=float,
                         help='Threshold for filtering out pairs')
+    parser.add_argument('-b', '--batch_size', default=64, type=int,
+                        help='Batch size for neural network predictions')
 
     return parser.parse_args()
 
@@ -74,6 +76,7 @@ BATCH_SIZE = args.batch_size
 VERBOSE = args.verbose
 SKIP_RNADUPLEX = args.skip_rnaduplex
 FILTER_THRESHOLD = args.threshold
+BATCH_SIZE = args.batch_size
 
 # Output settings
 OUTPUT_DIR = os.path.join(args.output_dir, f"{VCF_ID}_{CHUNKSIZE}")
