@@ -8,10 +8,7 @@ if SINGLE_CHROMOSOME:# Global chromosome sequence cache
     CHROMOSOME_ID = None
     CHROMOSOME_METADATA = None
 
-def calculate_au_content(sequence):
-    au_count = sequence.count('A') + sequence.count('T') + sequence.count('U')
-    total_length = len(sequence)
-    return au_count / total_length if total_length > 0 else None
+
 
 def load_chromosome(chrom):
     """
