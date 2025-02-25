@@ -45,7 +45,7 @@ def analysis_pipeline(df, start_index, end_index, output_dir, vcf_id):
         str) + '_' + df['ref'] + '_' + df['alt']
 
     # Step 1: Data Preprocessing
-    df = validate_ref_nucleotides(df, invalid_rows_report_file)
+    # df = validate_ref_nucleotides(df, invalid_rows_report_file)
     df = generate_is_mirna_column(df, grch=37)
     df = add_sequence_columns(df, upstream_offset=UPSTREAM_OFFSET, downstream_offset=DOWNSTREAM_OFFSET)
 
@@ -151,7 +151,7 @@ def analysis_pipeline_single(df, start_index, end_index, output_dir, vcf_id):
         print(f"Pre-loaded chromosome {unique_chroms[0]} for faster access")
 
     # Step 1: Data Preprocessing
-    df = validate_ref_nucleotides_single(df, invalid_rows_report_file)
+    # df = validate_ref_nucleotides_single(df, invalid_rows_report_file)
     df = generate_is_mirna_column_single(df, grch=37)
     df = add_sequence_columns_single(df, upstream_offset=UPSTREAM_OFFSET, downstream_offset=DOWNSTREAM_OFFSET)
 
