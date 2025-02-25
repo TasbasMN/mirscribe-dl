@@ -1,0 +1,10 @@
+Groups Summary:
+==============
+Group	Files	Total_Variants	Avg_Variants
+Group_1	80	454823	5685.29
+Group_2	80	466231	5827.89
+Group_3	80	478855	5985.69
+Group_4	80	501683	6271.04
+Group_5	80	515354	6441.93
+Group_6	80	526027	6575.34
+Group_7	80	536678	6708.48
