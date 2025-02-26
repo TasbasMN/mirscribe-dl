@@ -1,0 +1,12 @@
+Groups Summary:
+==============
+Group	Files	Total_Variants	Avg_Variants
+Group_0	80	1661041	20763.01
+Group_1	80	299088	3738.60
+Group_2	80	300774	3759.68
+Group_3	80	302465	3780.81
+Group_4	80	303767	3797.09
+Group_5	80	305374	3817.18
+Group_6	80	307060	3838.25
+
+Note: Group_0 contains the 80 largest files. The remaining files are distributed evenly among the other groups.
