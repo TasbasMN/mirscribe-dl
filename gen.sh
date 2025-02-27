@@ -146,7 +146,6 @@ echo "Logs directory: \${LOGS_DIR}"
 
 # actual code that does stuff-------------------------------------------------------------------------------
 module load miniconda3
-conda activate mir
 cd ${SCRATCH_DIR}/mirscribe-dl/
 
 # Add these before running the Python command
@@ -155,8 +154,8 @@ echo "Full VCF path: \${VCF_FILE}"
 echo "Output directory: \${OUTPUT_DIR}"
 echo "File exists check: \$(if [ -f "\${VCF_FILE}" ]; then echo "YES"; else echo "NO"; fi)"
 
-# Use the absolute path directly and specify the output directory
-python main.py -f "\${VCF_FILE}" -w ${NUM_CPUS} -c \${CHUNK_SIZE} -o "\${OUTPUT_DIR}"
+# Use the full path to Python instead of activation
+/arf/home/mtasbas/miniconda3/envs/mir/bin/python main.py -f "\${VCF_FILE}" -w ${NUM_CPUS} -c \${CHUNK_SIZE} -o "\${OUTPUT_DIR}"
 
 # actual code that does stuff-------------------------------------------------------------------------------
 
