@@ -1,8 +1,0 @@
-Distribution Summary:
-====================
-Category	Files	Total_Variants	Avg_Variants
-huge_12k	53	1373297	25911.26
-large_7k	84	773349	9206.54
-medium_3.5k	142	726061	5113.11
-small_2k	157	412161	2625.23
-tiny	124	194783	1570.83
