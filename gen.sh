@@ -3,9 +3,11 @@
 # Adjust this value based on your average processing time per line (in seconds)
 TIME_PER_LINE=0.2
 
-# Check if an argument is provided
-if [ $# -eq 0 ]; then
-    echo "Error: Please provide a target directory containing VCF files as an argument."
+# Check if correct arguments are provided
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: $0 <target_directory> [output_subfolder]"
+    echo "  <target_directory>: Directory containing VCF files"
+    echo "  [output_subfolder]: Optional subfolder name for results (default: basename of target directory)"
     exit 1
 fi
 
@@ -16,6 +18,16 @@ SCRATCH_DIR="/arf/scratch/mtasbas"
 TARGET_DIR="$1"
 # Remove trailing slash from TARGET_DIR if present
 TARGET_DIR="${TARGET_DIR%/}"
+
+# Set output subfolder - use command line arg if provided, otherwise use target dir basename
+if [ $# -eq 2 ]; then
+    OUTPUT_SUBFOLDER="$2"
+else
+    OUTPUT_SUBFOLDER="$(basename ${TARGET_DIR})"
+fi
+
+# Ensure OUTPUT_SUBFOLDER doesn't have a trailing slash
+OUTPUT_SUBFOLDER="${OUTPUT_SUBFOLDER%/}"
 
 SCRIPT_DIR="${SCRATCH_DIR}/scripts/$(basename ${TARGET_DIR})"
 LOGS_DIR="${SCRATCH_DIR}/logs/$(basename ${TARGET_DIR})"
@@ -69,6 +81,9 @@ fi
 # Extract the folder name for output organization
 FOLDER_NAME=$(basename "${TARGET_DIR}")
 
+# Prepare the output directory path for main.py
+OUTPUT_DIR="${SCRATCH_DIR}/mirscribe-dl/results/${OUTPUT_SUBFOLDER}"
+
 for VCF_FILE in "${VCF_FILES[@]}"; do
     VCF_BASENAME=$(basename "${VCF_FILE}" .vcf)
     SCRIPT_NAME="${SCRIPT_DIR}/${VCF_BASENAME}_job.sh"
@@ -104,6 +119,7 @@ VCF_FILE="${VCF_FILE}"
 JOB_NAME="\$(date +%Y%m%d_%H%M)_${VCF_BASENAME}"
 LINE_COUNT=${LINE_COUNT}
 CHUNK_SIZE=${CHUNK_SIZE}
+OUTPUT_DIR="${OUTPUT_DIR}"
 
 #--- Function Definitions ---#
 seconds_to_hhmmss() {
@@ -113,6 +129,7 @@ seconds_to_hhmmss() {
 
 #--- Job Execution ---#
 mkdir -p "${LOGS_DIR}"
+mkdir -p "\${OUTPUT_DIR}"
 START_TIME=\$(date +%s)
 
 echo "Started at: \$(date)"
@@ -122,7 +139,7 @@ echo "VCF file: \${VCF_FILE}"
 echo "Allocated time: ${ALLOCATED_TIME}"
 echo "Chunk size: \${CHUNK_SIZE}"
 echo "Number of CPUs: ${NUM_CPUS}"
-
+echo "Output directory: \${OUTPUT_DIR}"
 
 # actual code that does stuff-------------------------------------------------------------------------------
 module load miniconda3
@@ -130,14 +147,13 @@ conda activate mir
 cd ${SCRATCH_DIR}/mirscribe-dl/
 
 # Add these before running the Python command
-echo "Current directory: $(pwd)"
-echo "Full VCF path: ${VCF_FILE}"
-echo "Processed path: ${RELATIVE_PATH}"
-echo "File exists check: $(if [ -f "${RELATIVE_PATH}" ]; then echo "YES"; else echo "NO"; fi)"
+echo "Current directory: \$(pwd)"
+echo "Full VCF path: \${VCF_FILE}"
+echo "Output directory: \${OUTPUT_DIR}"
+echo "File exists check: \$(if [ -f "\${VCF_FILE}" ]; then echo "YES"; else echo "NO"; fi)"
 
-
-# Use the absolute path directly
-python main.py -f "\${VCF_FILE}" -w ${NUM_CPUS} -c \${CHUNK_SIZE}
+# Use the absolute path directly and specify the output directory
+python main.py -f "\${VCF_FILE}" -w ${NUM_CPUS} -c \${CHUNK_SIZE} -o "\${OUTPUT_DIR}"
 
 # actual code that does stuff-------------------------------------------------------------------------------
 
@@ -171,6 +187,7 @@ echo "Input file line count: \${LINE_COUNT}"
 echo "Average time per input line: \${AVG_TIME_PER_LINE} seconds"
 echo "Runtime: \${RUNTIME}"
 echo "line count: \${LINE_COUNT}"
+echo "Results saved to: \${OUTPUT_DIR}"
 EOF
 
     chmod +x "${SCRIPT_NAME}"
@@ -182,3 +199,4 @@ done
 echo "All SLURM scripts have been generated in ${SCRIPT_DIR}"
 echo "sbatch commands have been written to $OUTPUT_FILE"
 echo "Found and processed ${#VCF_FILES[@]} VCF files from ${TARGET_DIR}"
+echo "Results will be saved to ${OUTPUT_DIR}"
