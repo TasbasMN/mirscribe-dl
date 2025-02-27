@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Adjust this value based on your average processing time per line (in seconds)
-TIME_PER_LINE=0.4
+TIME_PER_LINE=0.2
 
 # Check if an argument is provided
 if [ $# -eq 0 ]; then

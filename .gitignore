@@ -6,9 +6,14 @@ todo.md
 
 # all big result files
 results/*
+completed/*
 
 # work in progress
-wip/*.DS_Store
+wip/*
+
+# ds stores
+.DS_Store
+**/.DS_Store
 
 # all temp files
 scripts/**/*.pyc
