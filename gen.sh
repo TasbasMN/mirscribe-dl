@@ -5,9 +5,9 @@ TIME_PER_LINE=0.2
 
 # Check if correct arguments are provided
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
-    echo "Usage: $0 <target_directory> [output_subfolder]"
+    echo "Usage: $0 <target_directory> [subfolder_name]"
     echo "  <target_directory>: Directory containing VCF files"
-    echo "  [output_subfolder]: Optional subfolder name for results (default: basename of target directory)"
+    echo "  [subfolder_name]: Optional subfolder name for results and logs (default: basename of target directory)"
     exit 1
 fi
 
@@ -19,19 +19,20 @@ TARGET_DIR="$1"
 # Remove trailing slash from TARGET_DIR if present
 TARGET_DIR="${TARGET_DIR%/}"
 
-# Set output subfolder - use command line arg if provided, otherwise use target dir basename
+# Set subfolder name - use command line arg if provided, otherwise use target dir basename
 if [ $# -eq 2 ]; then
-    OUTPUT_SUBFOLDER="$2"
+    SUBFOLDER_NAME="$2"
 else
-    OUTPUT_SUBFOLDER="$(basename ${TARGET_DIR})"
+    SUBFOLDER_NAME="$(basename ${TARGET_DIR})"
 fi
 
-# Ensure OUTPUT_SUBFOLDER doesn't have a trailing slash
-OUTPUT_SUBFOLDER="${OUTPUT_SUBFOLDER%/}"
+# Ensure SUBFOLDER_NAME doesn't have a trailing slash
+SUBFOLDER_NAME="${SUBFOLDER_NAME%/}"
 
 SCRIPT_DIR="${SCRATCH_DIR}/scripts/$(basename ${TARGET_DIR})"
-LOGS_DIR="${SCRATCH_DIR}/logs/$(basename ${TARGET_DIR})"
-OUTPUT_FILE="sbatch_commands_$(basename ${TARGET_DIR}).txt"
+BASE_LOGS_DIR="${SCRATCH_DIR}/logs/$(basename ${TARGET_DIR})"
+LOGS_DIR="${BASE_LOGS_DIR}/${SUBFOLDER_NAME}"
+OUTPUT_FILE="sbatch_commands_$(basename ${TARGET_DIR})_${SUBFOLDER_NAME}.txt"
 
 mkdir -p "${SCRIPT_DIR}"
 mkdir -p "${LOGS_DIR}"
@@ -82,11 +83,11 @@ fi
 FOLDER_NAME=$(basename "${TARGET_DIR}")
 
 # Prepare the output directory path for main.py
-OUTPUT_DIR="${SCRATCH_DIR}/mirscribe-dl/results/${OUTPUT_SUBFOLDER}"
+OUTPUT_DIR="${SCRATCH_DIR}/mirscribe-dl/results/${SUBFOLDER_NAME}"
 
 for VCF_FILE in "${VCF_FILES[@]}"; do
     VCF_BASENAME=$(basename "${VCF_FILE}" .vcf)
-    SCRIPT_NAME="${SCRIPT_DIR}/${VCF_BASENAME}_job.sh"
+    SCRIPT_NAME="${SCRIPT_DIR}/${VCF_BASENAME}_${SUBFOLDER_NAME}_job.sh"
     
     if [ ! -f "${VCF_FILE}" ]; then
         continue
@@ -103,7 +104,7 @@ for VCF_FILE in "${VCF_FILES[@]}"; do
 #--- SLURM Job Settings ---#
 #SBATCH -p hamsi
 #SBATCH -A mtasbas
-#SBATCH -J ${VCF_BASENAME}
+#SBATCH -J ${SUBFOLDER_NAME}_${VCF_BASENAME}
 #SBATCH --error=${LOGS_DIR}/%J.err
 #SBATCH --output=${LOGS_DIR}/%J.out
 #SBATCH --nodes=1
@@ -116,10 +117,11 @@ for VCF_FILE in "${VCF_FILES[@]}"; do
 
 #--- Job Specific Settings ---#
 VCF_FILE="${VCF_FILE}"
-JOB_NAME="\$(date +%Y%m%d_%H%M)_${VCF_BASENAME}"
+JOB_NAME="\$(date +%Y%m%d_%H%M)_${SUBFOLDER_NAME}_${VCF_BASENAME}"
 LINE_COUNT=${LINE_COUNT}
 CHUNK_SIZE=${CHUNK_SIZE}
 OUTPUT_DIR="${OUTPUT_DIR}"
+LOGS_DIR="${LOGS_DIR}"
 
 #--- Function Definitions ---#
 seconds_to_hhmmss() {
@@ -128,7 +130,7 @@ seconds_to_hhmmss() {
 }
 
 #--- Job Execution ---#
-mkdir -p "${LOGS_DIR}"
+mkdir -p "\${LOGS_DIR}"
 mkdir -p "\${OUTPUT_DIR}"
 START_TIME=\$(date +%s)
 
@@ -140,6 +142,7 @@ echo "Allocated time: ${ALLOCATED_TIME}"
 echo "Chunk size: \${CHUNK_SIZE}"
 echo "Number of CPUs: ${NUM_CPUS}"
 echo "Output directory: \${OUTPUT_DIR}"
+echo "Logs directory: \${LOGS_DIR}"
 
 # actual code that does stuff-------------------------------------------------------------------------------
 module load miniconda3
@@ -188,6 +191,7 @@ echo "Average time per input line: \${AVG_TIME_PER_LINE} seconds"
 echo "Runtime: \${RUNTIME}"
 echo "line count: \${LINE_COUNT}"
 echo "Results saved to: \${OUTPUT_DIR}"
+echo "Logs saved to: \${LOGS_DIR}"
 EOF
 
     chmod +x "${SCRIPT_NAME}"
@@ -200,3 +204,4 @@ echo "All SLURM scripts have been generated in ${SCRIPT_DIR}"
 echo "sbatch commands have been written to $OUTPUT_FILE"
 echo "Found and processed ${#VCF_FILES[@]} VCF files from ${TARGET_DIR}"
 echo "Results will be saved to ${OUTPUT_DIR}"
+echo "Logs will be saved to ${LOGS_DIR}"
