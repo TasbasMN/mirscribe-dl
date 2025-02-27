@@ -30,8 +30,8 @@ fi
 SUBFOLDER_NAME="${SUBFOLDER_NAME%/}"
 
 SCRIPT_DIR="${SCRATCH_DIR}/scripts/$(basename ${TARGET_DIR})"
-BASE_LOGS_DIR="${SCRATCH_DIR}/logs/$(basename ${TARGET_DIR})"
-LOGS_DIR="${BASE_LOGS_DIR}/${SUBFOLDER_NAME}"
+# Changed logs directory structure to logs/subfolder/group
+LOGS_DIR="${SCRATCH_DIR}/logs/${SUBFOLDER_NAME}/$(basename ${TARGET_DIR})"
 OUTPUT_FILE="sbatch_commands_$(basename ${TARGET_DIR})_${SUBFOLDER_NAME}.txt"
 
 mkdir -p "${SCRIPT_DIR}"
