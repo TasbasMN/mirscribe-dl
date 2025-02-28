@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# crontab -e command
+# */10 * * * * /bin/bash /arf/scratch/mtasbas/mirscribe-dl/cron.sh >> /arf/home/mtasbas/batch_submission.log 2>&1
+
 # Define the path to your sbatch command files and working directory
 SBATCH_FILES_DIR="/arf/scratch/mtasbas/mirscribe-dl"
 HOME_DIR="/arf/home/mtasbas"  # Your home directory
