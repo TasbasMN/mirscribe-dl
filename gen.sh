@@ -29,7 +29,7 @@ fi
 # Ensure SUBFOLDER_NAME doesn't have a trailing slash
 SUBFOLDER_NAME="${SUBFOLDER_NAME%/}"
 
-SCRIPT_DIR="${SCRATCH_DIR}/scripts/$(basename ${TARGET_DIR})"
+SCRIPT_DIR="${SCRATCH_DIR}/scripts/${SUBFOLDER_NAME}/$(basename ${TARGET_DIR})"
 # Changed logs directory structure to logs/subfolder/group
 LOGS_DIR="${SCRATCH_DIR}/logs/${SUBFOLDER_NAME}/$(basename ${TARGET_DIR})"
 OUTPUT_FILE="sbatch_commands_$(basename ${TARGET_DIR})_${SUBFOLDER_NAME}.txt"
