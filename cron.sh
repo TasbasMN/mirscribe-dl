@@ -17,13 +17,12 @@ log_message() {
 }
 
 SBATCH_FILES=(
-  "sbatch_commands_group_0_sim2.txt"
-  "sbatch_commands_group_1_sim2.txt"
-  "sbatch_commands_group_2_sim2.txt"
-  "sbatch_commands_group_3_sim2.txt"
-  "sbatch_commands_group_4_sim2.txt"
-  "sbatch_commands_group_5_sim2.txt"
-  "sbatch_commands_group_6_sim2.txt"
+  "sbatch_commands_group_1_sim3.txt"
+  "sbatch_commands_group_2_sim3.txt"
+  "sbatch_commands_group_3_sim3.txt"
+  "sbatch_commands_group_4_sim3.txt"
+  "sbatch_commands_group_5_sim3.txt"
+  "sbatch_commands_group_6_sim3.txt"
   # Add more files as needed
 )
 
