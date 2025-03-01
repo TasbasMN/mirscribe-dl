@@ -24,6 +24,12 @@ source /arf/sw/comp/python/miniconda3/etc/profile.d/conda.sh
 
 #  Activate environment
 conda activate mir
+conda list | grep torch
+# Add after conda activate mir
+which python
+python -c "import sys; print(sys.path)"
+python -c "import torch; print(torch.__file__)"
+
 
 # Change to  working directory
 cd /arf/scratch/mtasbas/mirscribe-dl/
