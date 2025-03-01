@@ -4,8 +4,8 @@
 #SBATCH -p debug
 #SBATCH -A mtasbas
 #SBATCH -J debug
-#SBATCH --error=debugJ.err
-#SBATCH --output=debugJ.out
+#SBATCH --output=/arf/scratch/mtasbas/debugJ.out
+#SBATCH --error=/arf/scratch/mtasbas/debugJ.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
