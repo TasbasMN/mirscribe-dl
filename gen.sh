@@ -145,14 +145,25 @@ echo "Output directory: \${OUTPUT_DIR}"
 echo "Logs directory: \${LOGS_DIR}"
 
 # actual code that does stuff-------------------------------------------------------------------------------
+
+# Load the modules
+module purge
 module load miniconda3
+
+# Source the conda.sh file from the system installation
+source /arf/sw/comp/python/miniconda3/etc/profile.d/conda.sh
+
+#  Activate environment
+conda activate mir
+
+# Change to  working directory
 cd ${SCRATCH_DIR}/mirscribe-dl/
 
-# Add these before running the Python command
-echo "Current directory: \$(pwd)"
-echo "Full VCF path: \${VCF_FILE}"
-echo "Output directory: \${OUTPUT_DIR}"
-echo "File exists check: \$(if [ -f "\${VCF_FILE}" ]; then echo "YES"; else echo "NO"; fi)"
+# # Add these before running the Python command
+# echo "Current directory: \$(pwd)"
+# echo "Full VCF path: \${VCF_FILE}"
+# echo "Output directory: \${OUTPUT_DIR}"
+# echo "File exists check: \$(if [ -f "\${VCF_FILE}" ]; then echo "YES"; else echo "NO"; fi)"
 
 # Use the full path to Python instead of activation
 /arf/home/mtasbas/miniconda3/envs/mir/bin/python main.py -f "\${VCF_FILE}" -w ${NUM_CPUS} -c \${CHUNK_SIZE} -o "\${OUTPUT_DIR}"
