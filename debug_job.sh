@@ -24,20 +24,10 @@ source /arf/sw/comp/python/miniconda3/etc/profile.d/conda.sh
 
 #  Activate environment
 conda activate mir
-conda list | grep torch
-# Add after conda activate mir
-which python
-python -c "import sys; print(sys.path)"
-python -c "import torch; print(torch.__file__)"
 
 
 # Change to  working directory
 cd /arf/scratch/mtasbas/mirscribe-dl/
-
-
-
-# Print the Python path for debugging
-echo "Python path: $(which python)"
 
 # Use EXPLICIT path to Python in your conda environment
 /arf/home/mtasbas/miniconda3/envs/mir/bin/python main.py
