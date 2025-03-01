@@ -15,7 +15,7 @@
 
 
 # actual code that does stuff-------------------------------------------------------------------------------
-
+module purge
 # Load the module that makes conda available
 module load miniconda3
 
@@ -36,8 +36,12 @@ cd /arf/scratch/mtasbas/mirscribe-dl/
 
 
 
-# Use the full path to Python instead of activation
-python main.py 
+# Print the Python path for debugging
+echo "Python path: $(which python)"
+
+# Use EXPLICIT path to Python in your conda environment
+/arf/home/mtasbas/miniconda3/envs/mir/bin/python main.py
+
 
 # actual code that does stuff-------------------------------------------------------------------------------
 
