@@ -36,3 +36,6 @@ cd /arf/scratch/mtasbas/mirscribe-dl/
 # actual code that does stuff-------------------------------------------------------------------------------
 
 
+# crontab line, works at 2.30am
+30 2 * * * cd /arf/scratch/mtasbas && sbatch /arf/scratch/mtasbas/mirscribe-dl/debug_job.sh >> /arf/scratch/mtasbas/cron_debug.log 2>&1
+
