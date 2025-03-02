@@ -8,12 +8,7 @@
 #  Author:     mtasbas
 #  Created:    2024
 #  Usage:      Run from crontab every 10 minutes:
-#              */10 * * * * /bin/bash cd /arf/scratch/mtasbas && 
-#              /arf/scratch/mtasbas/mirscribe-dl/cron.sh >> 
-#              /arf/home/mtasbas/batch_submission.log 2>&1
-#
-# ==============================================================================
-
+#                    */10 * * * * /bin/bash -c "cd /arf/scratch/mtasbas && /arf/scratch/mtasbas/mirscribe-dl/cron.sh >> /arf/home/mtasbas/batch_submission.log 2>&1"
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
