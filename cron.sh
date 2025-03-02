@@ -119,8 +119,9 @@ submit_next_batch() {
   
   cd "$SBATCH_FILES_DIR"
   log_message "Executing commands from $batch_file"
-  cat "$batch_file" | bash
-  
+  # cat "$batch_file" | bash is commented out because it catches "submitted batch job" messages, polluting the logfile
+  cat "$batch_file" | bash > /dev/null
+
   local new_index=$((batch_index + 1))
   update_index "$new_index"
   log_message "Submitted batch $batch_file. Updated index to $new_index"
