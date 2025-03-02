@@ -30,14 +30,18 @@ CREDENTIALS_FILE="$HOME_DIR/.pushover_credentials"  # Store API keys here
 # Job control settings
 MAX_QUEUED_JOBS=20
 
+# Define the simulation variable
+SIM_TYPE="sim4"
+
 # Ordered list of batch files to process sequentially
 SBATCH_FILES=(
-  "sbatch_commands_group_1_sim3.txt"
-  "sbatch_commands_group_2_sim3.txt"
-  "sbatch_commands_group_3_sim3.txt"
-  "sbatch_commands_group_4_sim3.txt"
-  "sbatch_commands_group_5_sim3.txt"
-  "sbatch_commands_group_6_sim3.txt"
+  "sbatch_commands_group_0_${SIM_TYPE}.txt"
+  "sbatch_commands_group_1_${SIM_TYPE}.txt"
+  "sbatch_commands_group_2_${SIM_TYPE}.txt"
+  "sbatch_commands_group_3_${SIM_TYPE}.txt"
+  "sbatch_commands_group_4_${SIM_TYPE}.txt"
+  "sbatch_commands_group_5_${SIM_TYPE}.txt"
+  "sbatch_commands_group_6_${SIM_TYPE}.txt"
   # Add more files as needed
 )
 
