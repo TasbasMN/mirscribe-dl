@@ -15,15 +15,15 @@
 
 
 # actual code that does stuff-------------------------------------------------------------------------------
-module purge
-# Load the module that makes conda available
-module load miniconda3
+# module purge
+# # Load the module that makes conda available
+# module load miniconda3
 
 # Source the conda.sh file from the system installation
 source /arf/sw/comp/python/miniconda3/etc/profile.d/conda.sh
 
-#  Activate environment
-conda activate mir
+# #  Activate environment
+# conda activate mir
 
 
 # Change to  working directory
