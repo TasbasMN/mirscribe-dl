@@ -4,10 +4,10 @@
 TIME_PER_LINE=0.2
 
 # Check if correct arguments are provided
-if [ $# -lt 1 ] || [ $# -gt 2 ]; then
-    echo "Usage: $0 <target_directory> [subfolder_name]"
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <target_directory>"
     echo "  <target_directory>: Directory containing VCF files"
-    echo "  [subfolder_name]: Optional subfolder name for results and logs (default: basename of target directory)"
+    echo "  The subfolder name will be automatically extracted from the path"
     exit 1
 fi
 
@@ -15,16 +15,13 @@ fi
 HOME_DIR="/arf/home/mtasbas"
 SCRATCH_DIR="/arf/scratch/mtasbas"
 
+# set target dir
 TARGET_DIR="$1"
-# Remove trailing slash from TARGET_DIR if present
 TARGET_DIR="${TARGET_DIR%/}"
 
-# Set subfolder name - use command line arg if provided, otherwise use target dir basename
-if [ $# -eq 2 ]; then
-    SUBFOLDER_NAME="$2"
-else
-    SUBFOLDER_NAME="$(basename ${TARGET_DIR})"
-fi
+# Automatically extract the second directory level from the path
+# For input like "input/sim3/folder", this will extract "sim3"
+SUBFOLDER_NAME=$(echo "$TARGET_DIR" | cut -d'/' -f2)
 
 # Ensure SUBFOLDER_NAME doesn't have a trailing slash
 SUBFOLDER_NAME="${SUBFOLDER_NAME%/}"
