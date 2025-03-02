@@ -148,15 +148,17 @@ remove_cron_job() {
     log_message "Removed index tracking file $INDEX_FILE"
   fi
   
-  # Remove this script from crontab
-  SCRIPT_PATH="$0"
-  ESCAPED_SCRIPT_PATH=$(echo "$SCRIPT_PATH" | sed 's/\//\\\//g')
-  crontab -l | grep -v "$ESCAPED_SCRIPT_PATH" | crontab -
+  # Remove this script from crontab using a unique identifier
+  CRON_IDENTIFIER="mirscribe-dl/cron.sh"
+  crontab -l | grep -v "$CRON_IDENTIFIER" | crontab -
   
-  log_message "Cron job removed successfully. Automation complete."
-  
-  # Send notification about completion
-  send_notification "Batch Processing Complete" "All batches have been processed and the cron job has been removed." 1
+  if [ $? -eq 0 ]; then
+    log_message "Cron job removed successfully. Automation complete."
+    send_notification "Batch Processing Complete" "All batches have been processed and the cron job has been removed." 1
+  else
+    log_message "Failed to remove cron job from crontab."
+    send_notification "Cron Removal Failed" "Could not remove cron job. Check logs." 1
+  fi
 }
 
 # -----------------------------------------------------------------------------
