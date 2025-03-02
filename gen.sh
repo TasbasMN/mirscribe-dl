@@ -1,201 +1,154 @@
 #!/bin/bash
+#
+# VCF Job Generator
+# Generates SLURM job scripts for processing VCF files
+#
 
-# Adjust this value based on your average processing time per line (in seconds)
+#------------------------------------------------------------------------------
+# Configuration
+#------------------------------------------------------------------------------
+SCRATCH_DIR="/arf/scratch/mtasbas"
 TIME_PER_LINE=0.2
+NUM_CPUS=54
 
-# Check if correct arguments are provided
+#------------------------------------------------------------------------------
+# Input Validation & Setup
+#------------------------------------------------------------------------------
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <target_directory>"
-    echo "  <target_directory>: Directory containing VCF files"
-    echo "  The subfolder name will be automatically extracted from the path"
     exit 1
 fi
 
-# Updated home and scratch directories
-HOME_DIR="/arf/home/mtasbas"
-SCRATCH_DIR="/arf/scratch/mtasbas"
+TARGET_DIR="${1%/}"
 
-# set target dir
-TARGET_DIR="$1"
-TARGET_DIR="${TARGET_DIR%/}"
+if [ ! -d "${TARGET_DIR}" ]; then
+    echo "Error: Directory '${TARGET_DIR}' not found."
+    exit 1
+fi
 
-# Automatically extract the second directory level from the path
-# For input like "input/sim3/folder", this will extract "sim3"
-SUBFOLDER_NAME=$(echo "$TARGET_DIR" | cut -d'/' -f2)
+# Get subfolder from path and setup directories
+SUBFOLDER=$(echo "$TARGET_DIR" | cut -d'/' -f2)
+BASE_NAME=$(basename ${TARGET_DIR})
+SCRIPT_DIR="${SCRATCH_DIR}/scripts/${SUBFOLDER}/${BASE_NAME}"
+LOGS_DIR="${SCRATCH_DIR}/logs/${SUBFOLDER}/${BASE_NAME}"
+OUTPUT_DIR="${SCRATCH_DIR}/mirscribe-dl/results/${SUBFOLDER}"
+BATCH_FILE="sbatch_commands_${BASE_NAME}_${SUBFOLDER}.txt"
 
-# Ensure SUBFOLDER_NAME doesn't have a trailing slash
-SUBFOLDER_NAME="${SUBFOLDER_NAME%/}"
+mkdir -p "${SCRIPT_DIR}" "${LOGS_DIR}"
+> "${BATCH_FILE}"
 
-SCRIPT_DIR="${SCRATCH_DIR}/scripts/${SUBFOLDER_NAME}/$(basename ${TARGET_DIR})"
-# Changed logs directory structure to logs/subfolder/group
-LOGS_DIR="${SCRATCH_DIR}/logs/${SUBFOLDER_NAME}/$(basename ${TARGET_DIR})"
-OUTPUT_FILE="sbatch_commands_$(basename ${TARGET_DIR})_${SUBFOLDER_NAME}.txt"
+echo "Processing VCF files in: ${TARGET_DIR}"
 
-mkdir -p "${SCRIPT_DIR}"
-mkdir -p "${LOGS_DIR}"
-
+#------------------------------------------------------------------------------
+# Helper Functions
+#------------------------------------------------------------------------------
 calculate_time() {
     local lines=$1
-    local total_seconds=$(echo "$lines * $TIME_PER_LINE" | bc)
-    local total_minutes=$(echo "($total_seconds + 59) / 60" | bc)
-    local rounded_minutes=$(( (total_minutes + 29) / 30 * 30 ))
-    local hours=$(( rounded_minutes / 60 ))
-    local minutes=$(( rounded_minutes % 60 ))
-    printf "%02d:%02d:00" $hours $minutes
+    local seconds=$(echo "$lines * $TIME_PER_LINE" | bc)
+    local minutes=$(echo "($seconds + 59) / 60" | bc)
+    local rounded=$(( (minutes + 9) / 10 * 10 ))
+    printf "%02d:%02d:00" $((rounded / 60)) $((rounded % 60))
 }
 
-calculate_conservative_chunk_size() {
-    local total_lines=$1
-    local TOTAL_MEMORY_MB=$((192 * 1024))  # 192 GB in MB
-    local NUM_CORES=54
-    local MEMORY_PER_LINE=3  # MB
-    local BASE_MEMORY=200  # MB
-    local SAFETY_FACTOR=0.8  # Use only 80% of available memory to be conservative
 
-    local usable_memory=$(echo "($TOTAL_MEMORY_MB - $BASE_MEMORY) * $SAFETY_FACTOR" | bc)
-    local max_lines_per_core=$(echo "$usable_memory / ($MEMORY_PER_LINE * $NUM_CORES)" | bc)
-    local total_chunks=$(echo "($total_lines + $max_lines_per_core - 1) / $max_lines_per_core" | bc)
-    local passes=$(echo "($total_chunks + $NUM_CORES - 1) / $NUM_CORES" | bc)
-
-    echo $(( total_lines / (passes * NUM_CORES) ))
+calculate_chunk_size() {
+    local lines=$1
+    # Simply divide the number of lines by the number of cores
+    echo $(( (lines + NUM_CPUS - 1) / NUM_CPUS ))
 }
 
-# Check if target directory exists
-if [ ! -d "${TARGET_DIR}" ]; then
-    echo "Error: Target directory '${TARGET_DIR}' does not exist."
-    exit 1
-fi
-
-# Check if there are any VCF files
+#------------------------------------------------------------------------------
+# Process VCF Files
+#------------------------------------------------------------------------------
 VCF_FILES=("${TARGET_DIR}"/*.vcf)
-if [ ${#VCF_FILES[@]} -eq 0 ] || [ ! -e "${VCF_FILES[0]}" ]; then
-    echo "Error: No VCF files found in '${TARGET_DIR}'."
+if [ ! -e "${VCF_FILES[0]}" ]; then
+    echo "Error: No VCF files found."
     exit 1
 fi
-
-# Clear the output file before writing
-> "$OUTPUT_FILE"
-
-# Extract the folder name for output organization
-FOLDER_NAME=$(basename "${TARGET_DIR}")
-
-# Prepare the output directory path for main.py
-OUTPUT_DIR="${SCRATCH_DIR}/mirscribe-dl/results/${SUBFOLDER_NAME}"
 
 for VCF_FILE in "${VCF_FILES[@]}"; do
-    VCF_BASENAME=$(basename "${VCF_FILE}" .vcf)
-    SCRIPT_NAME="${SCRIPT_DIR}/${VCF_BASENAME}_${SUBFOLDER_NAME}_job.sh"
+    [ ! -f "${VCF_FILE}" ] && continue
     
-    if [ ! -f "${VCF_FILE}" ]; then
-        continue
-    fi
+    VCF_NAME=$(basename "${VCF_FILE}" .vcf)
+    SCRIPT="${SCRIPT_DIR}/${VCF_NAME}_${SUBFOLDER}_job.sh"
     
-    LINE_COUNT=$(wc -l < "${VCF_FILE}")
-    ALLOCATED_TIME=$(calculate_time $LINE_COUNT)
-    CHUNK_SIZE=$(calculate_conservative_chunk_size $LINE_COUNT)
-    NUM_CPUS=54
+    LINES=$(wc -l < "${VCF_FILE}")
+    RUNTIME=$(calculate_time $LINES)
+    CHUNKS=$(calculate_chunk_size $LINES)
 
-    cat << EOF > "${SCRIPT_NAME}"
+    # Generate the job script with streamlined logging
+    cat > "${SCRIPT}" << EOF
 #!/bin/bash
 
 #--- SLURM Job Settings ---#
 #SBATCH -p hamsi
 #SBATCH -A mtasbas
-#SBATCH -J ${SUBFOLDER_NAME}_${VCF_BASENAME}
+#SBATCH -J ${SUBFOLDER}_${VCF_NAME}
 #SBATCH --error=${LOGS_DIR}/%J.err
 #SBATCH --output=${LOGS_DIR}/%J.out
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NUM_CPUS}
 #SBATCH -C weka
-#SBATCH --time=${ALLOCATED_TIME}
+#SBATCH --time=${RUNTIME}
 #SBATCH --mail-user=nazifts@gmail.com
 #SBATCH --mail-type=ALL
 
-#--- Job Specific Settings ---#
+#--- Job Configuration ---#
 VCF_FILE="${VCF_FILE}"
-JOB_NAME="\$(date +%Y%m%d_%H%M)_${SUBFOLDER_NAME}_${VCF_BASENAME}"
-LINE_COUNT=${LINE_COUNT}
-CHUNK_SIZE=${CHUNK_SIZE}
+JOB_NAME="\$(date +%Y%m%d_%H%M)_${SUBFOLDER}_${VCF_NAME}"
 OUTPUT_DIR="${OUTPUT_DIR}"
 LOGS_DIR="${LOGS_DIR}"
 
-#--- Function Definitions ---#
-seconds_to_hhmmss() {
-    local seconds=\$1
-    printf '%02dh:%02dm:%02ds\n' \$((seconds/3600)) \$((seconds%3600/60)) \$((seconds%60))
-}
+# Create required directories
+mkdir -p "\${OUTPUT_DIR}" "\${LOGS_DIR}"
 
-#--- Job Execution ---#
-mkdir -p "\${LOGS_DIR}"
-mkdir -p "\${OUTPUT_DIR}"
+# Log basic job info
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Job started: \${VCF_FILE} (${LINES} lines)"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuration: ${NUM_CPUS} CPUs, chunk size ${CHUNKS}"
 START_TIME=\$(date +%s)
 
-echo "Started at: \$(date)"
-echo "Start time variable: \${START_TIME}"
-
-echo "VCF file: \${VCF_FILE}"
-echo "Allocated time: ${ALLOCATED_TIME}"
-echo "Chunk size: \${CHUNK_SIZE}"
-echo "Number of CPUs: ${NUM_CPUS}"
-echo "Output directory: \${OUTPUT_DIR}"
-echo "Logs directory: \${LOGS_DIR}"
-
-# actual code that does stuff-------------------------------------------------------------------------------
-
-# Source the conda.sh file from the system installation
+#--- Execute Processing ---#
+# Setup environment
 source /arf/sw/comp/python/miniconda3/etc/profile.d/conda.sh
-
-# Change to  working directory
 cd ${SCRATCH_DIR}/mirscribe-dl/
 
-# Use the full path to Python instead of activation
-/arf/home/mtasbas/miniconda3/envs/mir/bin/python main.py -f "\${VCF_FILE}" -w ${NUM_CPUS} -c \${CHUNK_SIZE} -o "\${OUTPUT_DIR}"
+# Run the main processing script
+/arf/home/mtasbas/miniconda3/envs/mir/bin/python main.py \\
+    -f "\${VCF_FILE}" \\
+    -w ${NUM_CPUS} \\
+    -c ${CHUNKS} \\
+    -o "\${OUTPUT_DIR}"
 
-# actual code that does stuff-------------------------------------------------------------------------------
-
-echo "Completed at: \$(date)"
-
-
-#--- Job Statistics ---#
-
-# Rename the log files
-mv "${LOGS_DIR}/\${SLURM_JOB_ID}.out" "${LOGS_DIR}/\${JOB_NAME}.out"
-
-# Check if error file is empty and handle accordingly
-if [ -s "${LOGS_DIR}/\${SLURM_JOB_ID}.err" ]; then
-    # Error file has content, so rename it
-    mv "${LOGS_DIR}/\${SLURM_JOB_ID}.err" "${LOGS_DIR}/\${JOB_NAME}.err"
-else
-    # Error file is empty, so delete it
-    rm "${LOGS_DIR}/\${SLURM_JOB_ID}.err"
-    echo "No errors detected, error file removed"
+#--- Post-processing ---#
+# Rename log files with timestamp for better organization
+if [ -f "${LOGS_DIR}/\${SLURM_JOB_ID}.out" ]; then
+    mv "${LOGS_DIR}/\${SLURM_JOB_ID}.out" "${LOGS_DIR}/\${JOB_NAME}.out"
 fi
 
-#--- Final Report ---#
+# Handle error file
+if [ -s "${LOGS_DIR}/\${SLURM_JOB_ID}.err" ]; then
+    mv "${LOGS_DIR}/\${SLURM_JOB_ID}.err" "${LOGS_DIR}/\${JOB_NAME}.err"
+else
+    rm -f "${LOGS_DIR}/\${SLURM_JOB_ID}.err"
+fi
+
+# Calculate runtime statistics
 END_TIME=\$(date +%s)
 RUNTIME=\$((END_TIME - START_TIME))
-RUNTIME_HHMMSS=\$(seconds_to_hhmmss \$RUNTIME)
-AVG_TIME_PER_LINE=\$(awk "BEGIN {printf \\"%.6f\\", \${RUNTIME} / \${LINE_COUNT}}")
+HOURS=\$((RUNTIME / 3600))
+MINUTES=\$(( (RUNTIME % 3600) / 60 ))
+SECONDS=\$((RUNTIME % 60))
 
-echo "Job statistics:"
-echo "Runtime: \${RUNTIME} seconds (\${RUNTIME_HHMMSS})"
-echo "Input file line count: \${LINE_COUNT}"
-echo "Average time per input line: \${AVG_TIME_PER_LINE} seconds"
-echo "Runtime: \${RUNTIME}"
-echo "line count: \${LINE_COUNT}"
-echo "Results saved to: \${OUTPUT_DIR}"
-echo "Logs saved to: \${LOGS_DIR}"
+# Print simple completion summary
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Job completed in \${HOURS}h:\${MINUTES}m:\${SECONDS}s"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Results saved to: \${OUTPUT_DIR}"
 EOF
 
-    chmod +x "${SCRIPT_NAME}"
-    
-    # Add sbatch command to the output file
-    echo "sbatch $SCRIPT_NAME" >> "$OUTPUT_FILE"
+    chmod +x "${SCRIPT}"
+    echo "sbatch ${SCRIPT}" >> "${BATCH_FILE}"
+    echo "Generated job for: ${VCF_NAME}"
 done
 
-echo "All SLURM scripts have been generated in ${SCRIPT_DIR}"
-echo "sbatch commands have been written to $OUTPUT_FILE"
-echo "Found and processed ${#VCF_FILES[@]} VCF files from ${TARGET_DIR}"
-echo "Results will be saved to ${OUTPUT_DIR}"
-echo "Logs will be saved to ${LOGS_DIR}"
+echo "Generated scripts for ${#VCF_FILES[@]} files"
+echo "Batch commands in: ${BATCH_FILE}"
